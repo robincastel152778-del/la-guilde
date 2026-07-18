@@ -664,7 +664,6 @@ function rerenderJeux(input){
 function gameRow(g){
   const avg = avgOf(g);
   const mine = g.ratings?.[ME];
-  const canEdit = (g.proposedBy||[]).includes(ME);
   return `<div class="game-row" id="row-${g.id}">
     <div class="game-head" onclick="document.getElementById('row-${g.id}').classList.toggle('open')">
       <span class="game-name">${gameName(g, true)}</span>
@@ -687,7 +686,7 @@ function gameRow(g){
       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="mini-btn" onclick="openRateOne('${g.id}')">${mine!=null?'Changer ma note ('+mine+')':'Noter ce jeu'}</button>
         <button class="mini-btn" onclick="openPromo('${g.id}')">${promoActive(g)?'Modifier la promo':'🏷️ Signaler une promo'}</button>
-        ${canEdit ? `<button class="mini-btn" onclick="openEditGame('${g.id}')">Modifier la fiche</button>` : ''}
+        <button class="mini-btn" onclick="openEditGame('${g.id}')">Modifier la fiche</button>
         <button class="mini-btn danger" onclick="openDeleteGame('${g.id}')">Supprimer</button>
       </div>
     </div>
@@ -808,7 +807,7 @@ function openGameForm(g){
   const allGenres = [...new Set([...GENRES, ...GAMES.flatMap(x=>x.genres||[])])];
   openModal(`
     <h2>${edit?'Modifier la fiche':'Proposer un jeu'}</h2>
-    <div class="sub">${edit?'Tu peux modifier cette fiche car tu l\u2019as proposée.':'Il rejoindra la liste commune, et tout le monde pourra le noter.'}</div>
+    <div class="sub">${edit?'Corrige ou complète les infos — la fiche est commune à tout le groupe.':'Il rejoindra la liste commune, et tout le monde pourra le noter.'}</div>
     <div class="field"><label>Nom du jeu *</label><input type="text" id="f-name" value="${esc(g?.name||'')}" placeholder="Ex : Lethal Company"></div>
     <div class="field"><label>Genres (plusieurs possibles)</label>
       ${chipMulti('genres', allGenres, g?.genres||[])}
