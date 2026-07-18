@@ -109,6 +109,20 @@
   .avatar-opt:hover{border-color:var(--gold);}
   .avatar-opt.sel{border-color:var(--gold); background:var(--accent-soft);}
   .status-btn{display:inline-flex; align-items:center; gap:8px;}
+  .suggest-wrap{position:relative;}
+  .suggest{position:absolute; top:100%; left:0; right:0; background:var(--panel2); border:1px solid var(--accent); border-radius:10px; margin-top:4px; z-index:60; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  .suggest-item{display:flex; align-items:center; gap:10px; padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border);}
+  .suggest-item:last-child{border-bottom:none;}
+  .suggest-item:hover{background:var(--accent-soft);}
+  .suggest-item img{width:60px; height:23px; object-fit:cover; border-radius:4px; flex-shrink:0;}
+  .suggest-name{flex:1; font-size:13.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .suggest-price{font-size:12px; color:var(--gold); font-weight:700; flex-shrink:0;}
+  .steam-pop{position:fixed; z-index:300; width:300px; background:var(--panel); border:1px solid var(--accent); border-radius:12px; overflow:hidden; box-shadow:0 14px 40px rgba(0,0,0,.6); pointer-events:none; animation:toastin .15s ease;}
+  .steam-pop img{width:100%; display:block;}
+  .steam-pop .sp-body{padding:10px 12px;}
+  .steam-pop .sp-name{font-weight:800; font-size:14.5px;}
+  .steam-pop .sp-desc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.45;}
+  .steam-pop .sp-meta{margin-top:7px; display:flex; gap:5px; flex-wrap:wrap; align-items:center;}
 
   /* ===== Arc cards ===== */
   .arc{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
@@ -808,7 +822,10 @@ function openGameForm(g){
   openModal(`
     <h2>${edit?'Modifier la fiche':'Proposer un jeu'}</h2>
     <div class="sub">${edit?'Corrige ou complète les infos — la fiche est commune à tout le groupe.':'Il rejoindra la liste commune, et tout le monde pourra le noter.'}</div>
-    <div class="field"><label>Nom du jeu *</label><input type="text" id="f-name" value="${esc(g?.name||'')}" placeholder="Ex : Lethal Company"></div>
+    <div class="field suggest-wrap"><label>Nom du jeu *</label>
+      <input type="text" id="f-name" autocomplete="off" value="${esc(g?.name||'')}" placeholder="Tape 3 lettres pour chercher sur Steam…" oninput="steamSuggest(this)" onblur="setTimeout(()=>{const b=document.getElementById('f-suggest'); if(b) b.innerHTML='';}, 250)">
+      <div id="f-suggest"></div>
+    </div>
     <div class="field"><label>Genres (plusieurs possibles)</label>
       ${chipMulti('genres', allGenres, g?.genres||[])}
       <div style="display:flex; gap:8px; margin-top:8px;">
@@ -1056,6 +1073,85 @@ async function saveArc(){
   toast('Aventure lancée — bon jeu à ' + participants.join(', ') + ' !');
   closeModal(); render();
 }
+
+/* ---------- Autocomplétion Steam ---------- */
+let SUGGEST_TIMER = null, SUGGEST_ABORT = null, LAST_SUGGEST = [];
+function steamSuggest(input){
+  clearTimeout(SUGGEST_TIMER);
+  const box = document.getElementById('f-suggest');
+  const q = input.value.trim();
+  if(q.length < 3){ if(box) box.innerHTML=''; return; }
+  SUGGEST_TIMER = setTimeout(async ()=>{
+    try{
+      if(SUGGEST_ABORT) SUGGEST_ABORT.abort();
+      SUGGEST_ABORT = new AbortController();
+      const r = await fetch('/api/steam/search?q=' + encodeURIComponent(q), { signal: SUGGEST_ABORT.signal });
+      if(!r.ok) return;
+      const data = await r.json();
+      LAST_SUGGEST = data.items || [];
+      if(document.activeElement !== input || !LAST_SUGGEST.length){ if(box) box.innerHTML=''; return; }
+      box.innerHTML = `<div class="suggest">${LAST_SUGGEST.map((i,idx)=>`
+        <div class="suggest-item" onmousedown="pickSteam(${idx})">
+          ${i.img?`<img src="${esc(i.img)}" alt="">`:''}
+          <span class="suggest-name">${esc(i.name)}</span>
+          <span class="suggest-price">${i.price===0?'Gratuit':i.price.toString().replace('.',',')+' €'}</span>
+        </div>`).join('')}</div>`;
+    }catch(e){ /* recherche annulée ou Steam indisponible : tant pis, on tape à la main */ }
+  }, 300);
+}
+function pickSteam(idx){
+  const it = LAST_SUGGEST[idx]; if(!it) return;
+  document.getElementById('f-name').value = it.name;
+  document.getElementById('f-link').value = 'https://store.steampowered.com/app/' + it.id;
+  document.getElementById('f-price').value = it.price;
+  const box = document.getElementById('f-suggest'); if(box) box.innerHTML='';
+  toast('Lien et prix Steam remplis ✨ (vérifie et ajuste si besoin)');
+}
+
+/* ---------- Mini-fiche Steam au survol des noms de jeux ---------- */
+let POP_EL = null, POP_TIMER = null;
+const POP_CACHE = {};
+document.addEventListener('mouseover', e => {
+  const a = e.target.closest ? e.target.closest('a.game-link') : null;
+  if(!a) return;
+  const m = (a.href || '').match(/store\.steampowered\.com\/app\/(\d+)/);
+  if(!m) return;
+  clearTimeout(POP_TIMER);
+  POP_TIMER = setTimeout(()=> showSteamPop(m[1], a), 350);
+});
+document.addEventListener('mouseout', e => {
+  if(e.target.closest && e.target.closest('a.game-link')){ clearTimeout(POP_TIMER); hideSteamPop(); }
+});
+async function showSteamPop(id, anchor){
+  try{
+    let d = POP_CACHE[id];
+    if(!d){
+      const r = await fetch('/api/steam/app/' + id);
+      if(!r.ok) return;
+      d = await r.json();
+      POP_CACHE[id] = d;
+    }
+    if(!document.body.contains(anchor)) return; // la page a changé entre-temps
+    hideSteamPop();
+    const rect = anchor.getBoundingClientRect();
+    POP_EL = document.createElement('div');
+    POP_EL.className = 'steam-pop';
+    POP_EL.style.top = Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 270)) + 'px';
+    POP_EL.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 316)) + 'px';
+    POP_EL.innerHTML = `${d.img?`<img src="${esc(d.img)}" alt="">`:''}
+      <div class="sp-body">
+        <div class="sp-name">${esc(d.name)}</div>
+        <div class="sp-desc">${esc((d.desc||'').slice(0,180))}${(d.desc||'').length>180?'…':''}</div>
+        <div class="sp-meta">
+          ${(d.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+          ${d.price?`<span class="price paid">${esc(d.price)}</span>`:''}
+          ${d.release?`<span class="game-meta">${esc(d.release)}</span>`:''}
+        </div>
+      </div>`;
+    document.body.appendChild(POP_EL);
+  }catch(e){ /* aperçu indisponible : le lien reste cliquable */ }
+}
+function hideSteamPop(){ if(POP_EL){ POP_EL.remove(); POP_EL = null; } }
 
 init();
 </script>
