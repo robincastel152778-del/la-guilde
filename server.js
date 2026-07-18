@@ -344,22 +344,44 @@ app.post('/api/arcs', async (req, res) => {
     // Appel à la campagne : nombre de places visées (optionnel, 2 à 20)
     const slots = parseInt(b.slots);
     if (!isNaN(slots) && slots >= 2 && slots <= 20) arc.slots = slots;
+    // Objectif de campagne (texte libre), heure de début, mode multigaming
+    if (isStr(b.goal, 200) && b.goal.trim()) arc.goal = b.goal.trim();
+    if (isStr(b.time, 10) && b.time) arc.time = b.time;
+    if (b.multi === true) { arc.multi = true; arc.gameName = 'Multigaming'; arc.gameId = ''; }
     await pool.query(`INSERT INTO arcs (id, data) VALUES ($1, $2)`, [arc.id, JSON.stringify(arc)]);
+
     const others = arc.participants.filter(p => p !== arc.createdBy);
+    const when = `${ddmm(arc.startDate)}${arc.time ? ' à ' + arc.time.replace(':', 'h') : ''}`;
+    const goalLine = arc.goal ? `\n🎯 Objectif : ${arc.goal}` : '';
     if (arc.slots && arc.participants.length < arc.slots) {
-      // Grosse notif : on recrute !
       const left = arc.slots - arc.participants.length;
-      notifyDiscord([
-        '📣 ═══════════════════ 📣',
-        '# ⚔️ APPEL À LA CAMPAGNE ! ⚔️',
-        `🚀 **${arc.createdBy}** recrute pour « **${arc.name}** » sur **${arc.gameName}** !`,
-        `👥 Déjà chauds : ${joinFr(arc.participants)}`,
-        `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — premiers arrivés, premiers servis !`,
-        '👉 Rejoignez l\u2019aventure depuis l\u2019onglet « Aventures » de La Guilde',
-        '📣 ═══════════════════ 📣'
-      ].join('\n'));
+      if (arc.multi) {
+        // Grosse notif spéciale soirée jeux
+        notifyDiscord([
+          '🎉 ═══════════════════ 🎉',
+          `# 🎮 SOIRÉE JEUX le ${when} !`,
+          `🚀 **${arc.createdBy}** lance « **${arc.name}** » — multigaming au programme !`,
+          `👥 Déjà chauds : ${joinFr(arc.participants)}`,
+          `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — rejoignez l'appel depuis l'onglet « Aventures » !${goalLine}`,
+          '⏰ Et pas de retard, bande de coquins !',
+          '🎉 ═══════════════════ 🎉'
+        ].join('\n'));
+      } else {
+        notifyDiscord([
+          '📣 ═══════════════════ 📣',
+          '# ⚔️ APPEL À LA CAMPAGNE ! ⚔️',
+          `🚀 **${arc.createdBy}** recrute pour « **${arc.name}** » sur **${arc.gameName}** !`,
+          `🗓️ Début souhaité : le ${when}`,
+          `👥 Déjà chauds : ${joinFr(arc.participants)}`,
+          `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — premiers arrivés, premiers servis !${goalLine}`,
+          '👉 Rejoignez l\u2019aventure depuis l\u2019onglet « Aventures » de La Guilde',
+          '📣 ═══════════════════ 📣'
+        ].join('\n'));
+      }
+    } else if (arc.multi) {
+      notifyDiscord(`🎉 **${arc.createdBy}** organise une soirée jeux (multigaming) le ${when} ${others.length ? 'avec ' + joinFr(others) : ''} ! Pas de retard, bande de coquins !${goalLine}`);
     } else {
-      notifyDiscord(`🚀 **${arc.createdBy}** lance l'aventure « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !`);
+      notifyDiscord(`🚀 **${arc.createdBy}** lance l'aventure « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !${goalLine}`);
     }
     broadcast();
     res.json({ ok: true });
@@ -384,6 +406,24 @@ app.post('/api/arcs/:id/join', async (req, res) => {
       } else {
         notifyDiscord(`➕ **${member}** rejoint l'aventure « ${arc.name} » sur **${arc.gameName}**${arc.slots ? ` (${n}/${arc.slots})` : ''}`);
       }
+    }
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Marquer l'objectif d'une aventure comme atteint (ou le rouvrir) : { done } */
+app.post('/api/arcs/:id/goal', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const arc = rows[0].data;
+    const done = !!(req.body && req.body.done);
+    const wasDone = !!arc.goalDone;
+    arc.goalDone = done;
+    await pool.query(`UPDATE arcs SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(arc)]);
+    if (done && !wasDone && arc.goal) {
+      notifyDiscord(`🏆 Objectif ATTEINT pour « ${arc.name} » sur **${arc.gameName}** : « ${arc.goal} » — GG à ${joinFr(arc.participants || [])} !`);
     }
     broadcast();
     res.json({ ok: true });
