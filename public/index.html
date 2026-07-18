@@ -92,6 +92,23 @@
   .promo-badge{display:inline-flex; align-items:center; background:rgba(255,107,129,.15); color:var(--coral); border-radius:6px; padding:1px 8px; font-size:11.5px; font-weight:700; white-space:nowrap;}
   .trash-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 7px; border-radius:7px; float:right; line-height:1.2;}
   .trash-btn:hover{color:var(--coral); background:rgba(255,107,129,.12);}
+  .pdot{overflow:hidden; flex-shrink:0;}
+  .pemoji{font-size:12px; line-height:1;}
+  .pdot.big{width:44px; height:44px; font-size:16px;}
+  .pdot.big .pemoji{font-size:24px;}
+  .avatar-img{width:100%; height:100%; object-fit:cover; border-radius:50%;}
+  .sdot{display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; flex-shrink:0;}
+  .social-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px;}
+  .social-card{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:16px 14px; cursor:pointer; color:var(--text); text-align:center; transition:.15s; display:flex; flex-direction:column; align-items:center; gap:7px; font-family:inherit; font-size:inherit;}
+  .social-card:hover{border-color:var(--accent); transform:translateY(-2px);}
+  .social-name{font-weight:800; font-size:15.5px; display:flex; align-items:center; gap:7px;}
+  .social-status{font-size:12px; color:var(--muted);}
+  .social-stats{font-size:12px; color:var(--muted); line-height:1.5;}
+  .avatar-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(46px,1fr)); gap:6px; max-height:230px; overflow-y:auto; padding:4px;}
+  .avatar-opt{font-size:21px; background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:8px 0; cursor:pointer; transition:.1s;}
+  .avatar-opt:hover{border-color:var(--gold);}
+  .avatar-opt.sel{border-color:var(--gold); background:var(--accent-soft);}
+  .status-btn{display:inline-flex; align-items:center; gap:8px;}
 
   /* ===== Arc cards ===== */
   .arc{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
@@ -178,8 +195,14 @@
 
 const GENRES = ['Coop','Survie','FPS','MOBA','Horreur','Sandbox','MMO','RPG','Stratégie','Battle Royale','Party game','Roguelike','Course','Simulation'];
 const HUES = [265,45,150,200,330,20,95,230];
+const STATUS = {
+  green:  { c:'#4ADE80', label:'Dispo pour jouer à de nouvelles choses !' },
+  orange: { c:'#FFC857', label:'À voir' },
+  red:    { c:'#FF6B81', label:'Mes campagnes me prennent déjà beaucoup de temps' }
+};
+const AVATARS = ['🎮','🕹️','👾','🤖','🧙','🧝','🧛','🧟','🥷','🦸','🦹','👑','🐉','🦖','🦕','🐺','🦊','🐻','🐼','🐸','🐢','🐙','🦑','🦉','🦅','🦇','🐍','🦂','🕷️','🦈','🐲','👻','💀','☠️','👽','🛸','🔥','⚡','❄️','🌙','⭐','☄️','🗡️','⚔️','🛡️','🏹','🪄','🧪','💣','🎯'];
 
-let ME=null, MEMBERS=[], GAMES=[], ARCS=[], TAB='panneau';
+let ME=null, MEMBERS=[], GAMES=[], ARCS=[], PROFILES={}, TAB='panneau', SOCIAL_SEL=null;
 
 /* ---------- Couche API : toutes les données passent par le serveur ---------- */
 async function apiGet(path){
@@ -194,7 +217,7 @@ async function apiSend(path, method, body){
 }
 async function loadAll(){
   const s = await apiGet('/api/state');
-  MEMBERS = s.members || []; GAMES = s.games || []; ARCS = s.arcs || [];
+  MEMBERS = s.members || []; GAMES = s.games || []; ARCS = s.arcs || []; PROFILES = s.profiles || {};
   GAMES.sort((a,b)=> new Date(a.addedAt) - new Date(b.addedAt));
 }
 /* Le profil choisi est mémorisé sur CE navigateur uniquement */
@@ -213,8 +236,24 @@ function memberColor(name){
 function hash(s){ let h=0; for(const c of s) h=(h*31 + c.charCodeAt(0))|0; return h; }
 const initials = n => n.slice(0,2).toUpperCase();
 
+/* ---------- Avatars & statuts ---------- */
+const getProf = name => PROFILES[name] || {};
+function pdotHtml(name, big){
+  const p = getProf(name);
+  let inner = esc(initials(name));
+  if(p.avatar?.type === 'emoji') inner = `<span class="pemoji">${esc(p.avatar.value)}</span>`;
+  else if(p.avatar?.type === 'url') inner = `<img class="avatar-img" src="${esc(p.avatar.value)}" alt="${esc(initials(name))}" onerror="this.remove()">`;
+  return `<span class="pdot ${big?'big':''}" style="background:${memberColor(name)}">${inner}</span>`;
+}
+function statusDot(name){
+  const st = getProf(name).status;
+  if(!st || !STATUS[st]) return '';
+  return `<span class="sdot" style="background:${STATUS[st].c}" title="${esc(STATUS[st].label)}"></span>`;
+}
+const fmt1 = v => (Math.round(v*10)/10).toString().replace('.',',');
+
 function pchip(name, score){
-  return `<span class="pchip"><span class="pdot" style="background:${memberColor(name)}">${esc(initials(name))}</span>${esc(name)}${score!=null?` <span class="score">${score}</span>`:''}</span>`;
+  return `<span class="pchip">${pdotHtml(name)}${esc(name)}${score!=null?` <span class="score">${score}</span>`:''}</span>`;
 }
 function gauge(score){
   const s = Math.max(0, Math.min(10, score));
@@ -294,20 +333,21 @@ function render(){
       <div class="head-inner">
         <div class="logo">LA <span>GUILDE</span></div>
         <div class="head-spacer"></div>
-        <span class="profile-chip"><span class="pdot" style="background:${memberColor(ME)}">${esc(initials(ME))}</span>${esc(ME)}</span>
+        <span class="profile-chip">${pdotHtml(ME)}${esc(ME)}${statusDot(ME)}</span>
         <button class="head-btn" onclick="switchProfile()">Changer</button>
         <button class="head-btn" onclick="refreshData()" title="Recharger les données">⟳ Actualiser</button>
       </div>
       <nav>
         <button class="tab ${TAB==='panneau'?'active':''}" onclick="setTab('panneau')">Panneau général</button>
         <button class="tab ${TAB==='perso'?'active':''}" onclick="setTab('perso')">Mon espace${toRate?`<span class="badge">${toRate}</span>`:''}</button>
+        <button class="tab ${TAB==='social'?'active':''}" onclick="setTab('social')">Social</button>
         <button class="tab ${TAB==='jeux'?'active':''}" onclick="setTab('jeux')">Tous les jeux</button>
         <button class="tab ${TAB==='aventures'?'active':''}" onclick="setTab('aventures')">Aventures</button>
       </nav>
     </header>
-    <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
+    <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='social' ? viewSocial() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
 }
-function setTab(t){ TAB=t; refreshData(true); }
+function setTab(t){ if(t==='social') SOCIAL_SEL=null; TAB=t; refreshData(true); }
 function switchProfile(){ ME=null; saveProfile(null); render(); }
 
 /* ---------- Onboarding ---------- */
@@ -316,9 +356,33 @@ function renderOnboard(){
     <h1>LA <span>GUILDE</span></h1>
     <p>Le QG du groupe pour proposer des jeux, les noter, et enfin savoir à quoi jouer ensemble.<br>Qui es-tu ?</p>
     <div class="profiles">
-      ${MEMBERS.map(m=>`<button class="profile-btn" onclick="pickProfile('${esc(m)}')"><span class="pdot" style="background:${memberColor(m)}">${esc(initials(m))}</span>${esc(m)}</button>`).join('')}
+      ${MEMBERS.map(m=>`<button class="profile-btn" onclick="pickProfile('${esc(m)}')">${pdotHtml(m, true)}${esc(m)}</button>`).join('')}
+      <button class="profile-btn" style="border-style:dashed; color:var(--muted)" onclick="openAddMember()"><span class="pdot big" style="background:var(--panel2); color:var(--muted)">+</span>Nouveau joueur</button>
     </div>
   </div>`;
+}
+function openAddMember(){
+  openModal(`
+    <h2>Bienvenue dans La Guilde !</h2>
+    <div class="sub">Ton pseudo apparaîtra pour tout le groupe : dans les notes, les campagnes et les notifs Discord. Choisis-le bien, on ne pourra pas le renommer facilement.</div>
+    <div class="field"><label>Ton pseudo *</label><input type="text" id="nm-name" maxlength="30" placeholder="Ex : Maxou"></div>
+    <div class="err" id="nm-err"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="addMember()">Rejoindre la guilde 🎮</button>
+    </div>`);
+}
+async function addMember(){
+  const name = document.getElementById('nm-name').value.trim();
+  if(!name) return showErr('nm-err','Il te faut un pseudo !');
+  if(MEMBERS.some(m=>m.toLowerCase()===name.toLowerCase())) return showErr('nm-err','Ce pseudo existe déjà — c\u2019est peut-être toi ? Ferme et clique dessus.');
+  try{
+    await apiSend('/api/members', 'POST', { name });
+  }catch(e){ return showErr('nm-err','Impossible d\u2019ajouter ce pseudo — réessaie.'); }
+  await loadAll();
+  closeModal();
+  pickProfile(name);
+  toast('Bienvenue dans La Guilde, ' + name + ' ! 👋');
 }
 function pickProfile(name){ ME=name; saveProfile(name); render(); }
 
@@ -377,6 +441,20 @@ function viewPerso(){
     .sort((a,b)=>b.avg-a.avg).slice(0,4);
 
   return `
+    <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      ${pdotHtml(ME, true)}
+      <div style="flex:1; min-width:230px">
+        <div class="eyebrow" style="margin-bottom:8px">Mon statut du moment</div>
+        <div class="chips">
+          ${Object.entries(STATUS).map(([k,s])=>`
+            <button type="button" class="chip-opt status-btn ${getProf(ME).status===k?'sel':''}" onclick="setStatus('${k}')">
+              <span class="sdot" style="background:${s.c}"></span>${esc(s.label)}
+            </button>`).join('')}
+        </div>
+      </div>
+      <button class="mini-btn" onclick="openAvatar()">🖼️ Changer d'avatar</button>
+    </div>
+
     <div class="actions">
       <button class="action-btn" onclick="openAddGame()"><span class="icon">🎮</span><span class="label">Proposer un jeu</span><div class="hint">Nom, genres, prix, ton envie…</div></button>
       <button class="action-btn" onclick="openRateNew()"><span class="icon">⭐</span><span class="label">Noter les nouveautés</span><div class="hint">Les jeux que tu n\u2019as pas encore notés</div>${toRate.length?`<span class="count">${toRate.length}</span>`:''}</button>
@@ -437,6 +515,117 @@ function viewPerso(){
     </div>`;
 }
 
+/* ---------- Vue : Social ---------- */
+function viewSocial(){
+  if(SOCIAL_SEL && MEMBERS.includes(SOCIAL_SEL)) return viewMemberProfile(SOCIAL_SEL);
+  return `<div class="card">
+    <div class="eyebrow">Le crew — clique sur un profil pour le visiter</div>
+    <div class="social-grid">
+      ${MEMBERS.map(m=>{
+        const proposed = GAMES.filter(g=>(g.proposedBy||[]).includes(m)).length;
+        const notes = GAMES.map(g=>g.ratings?.[m]).filter(v=>typeof v==='number');
+        const avg = notes.length ? notes.reduce((a,b)=>a+b,0)/notes.length : null;
+        const camps = ARCS.filter(a=>a.status==='en cours'&&(a.participants||[]).includes(m)).length;
+        const st = getProf(m).status;
+        return `<button class="social-card" onclick="openMemberProfile('${esc(m)}')">
+          ${pdotHtml(m, true)}
+          <div class="social-name">${esc(m)}${statusDot(m)}</div>
+          ${st?`<div class="social-status">${esc(STATUS[st].label)}</div>`:'<div class="social-status">statut non renseigné</div>'}
+          <div class="social-stats">${proposed} jeu${proposed>1?'x':''} proposé${proposed>1?'s':''} · ${notes.length} noté${notes.length>1?'s':''}${avg!=null?`<br>${fmt1(avg)}/10 de moyenne`:''}<br>${camps} campagne${camps>1?'s':''} en cours</div>
+        </button>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+function openMemberProfile(m){ SOCIAL_SEL = m; render(); }
+function viewMemberProfile(m){
+  const st = getProf(m).status;
+  const myCamps = ARCS.filter(a=>(a.participants||[]).includes(m))
+    .sort((a,b)=> (a.status==='en cours'?0:1)-(b.status==='en cours'?0:1) || new Date(b.createdAt)-new Date(a.createdAt));
+  const rated = GAMES.filter(g=> typeof g.ratings?.[m]==='number')
+    .sort((a,b)=> b.ratings[m]-a.ratings[m]); // ordre décroissant : du top au flop
+  const proposed = GAMES.filter(g=>(g.proposedBy||[]).includes(m))
+    .sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
+  return `
+    <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour au crew</button>
+    <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      ${pdotHtml(m, true)}
+      <div>
+        <div style="font-weight:800; font-size:18px;">${esc(m)} ${statusDot(m)}</div>
+        <div class="game-meta">${st ? esc(STATUS[st].label) : 'Statut non renseigné'}</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">Ses campagnes</div>
+      ${myCamps.length ? myCamps.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune campagne pour l\u2019instant.</div>'}
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="eyebrow">Toutes ses notes — du top au flop</div>
+        ${rated.length ? rated.map(g=>`
+          <div class="game-row"><div class="game-head" style="cursor:default">
+            <span class="game-name">${gameName(g)}</span>
+            <span style="flex:1"></span>
+            ${gauge(g.ratings[m])}
+          </div></div>`).join('') : '<div class="empty">Ce joueur n\u2019a encore rien noté. Le mystère reste entier.</div>'}
+      </div>
+      <div class="card">
+        <div class="eyebrow">Les jeux qu'il a proposés</div>
+        ${proposed.length ? proposed.map(g=>`
+          <div class="game-row"><div class="game-head" style="cursor:default">
+            <span class="game-name">${gameName(g)}</span>
+            ${priceLabel(g)}
+            <span style="flex:1"></span>
+            ${avgOf(g)!=null ? gauge(avgOf(g)) : '<span class="game-meta">pas encore noté</span>'}
+          </div></div>`).join('') : '<div class="empty">Aucune proposition à son actif… le fantôme du mois se profile 👀</div>'}
+      </div>
+    </div>`;
+}
+
+/* ---------- Statut & avatar ---------- */
+async function setStatus(s){
+  await apiSend('/api/profile', 'POST', { member: ME, status: s });
+  await loadAll();
+  toast('Statut mis à jour');
+  render();
+}
+function openAvatar(){
+  const cur = getProf(ME).avatar;
+  openModal(`
+    <h2>Choisis ton avatar</h2>
+    <div class="sub">Un emoji dans la galerie, ou colle l'URL d'une image de ton choix (clic droit sur une image du web → « Copier l'adresse de l'image »).</div>
+    <div class="avatar-grid">
+      ${AVATARS.map(a=>`<button type="button" class="avatar-opt ${cur?.type==='emoji'&&cur.value===a?'sel':''}" data-a="${a}" onclick="pickAvatar(this)">${a}</button>`).join('')}
+    </div>
+    <div class="field" style="margin-top:14px"><label>Ou l'URL d'une image (elle sera prioritaire)</label>
+      <input type="url" id="av-url" value="${cur?.type==='url'?esc(cur.value):''}" placeholder="https://…"></div>
+    <div class="err" id="av-err"></div>
+    <div class="modal-actions">
+      ${cur?`<button class="btn" style="margin-right:auto" onclick="saveAvatar(null)">Revenir aux initiales</button>`:''}
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="saveAvatar()">Enregistrer</button>
+    </div>`);
+}
+function pickAvatar(btn){
+  btn.parentElement.querySelectorAll('.avatar-opt').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+async function saveAvatar(reset){
+  let avatar;
+  if(reset === null){ avatar = null; }
+  else {
+    const url = document.getElementById('av-url').value.trim();
+    const sel = document.querySelector('.avatar-opt.sel');
+    if(url) avatar = { type:'url', value:url };
+    else if(sel) avatar = { type:'emoji', value: sel.dataset.a };
+    else return showErr('av-err','Choisis un emoji ou colle une URL d\u2019image.');
+  }
+  await apiSend('/api/profile', 'POST', { member: ME, avatar });
+  await loadAll();
+  toast('Avatar mis à jour ✨');
+  closeModal(); render();
+}
+
 /* ---------- Vue : Tous les jeux ---------- */
 let SEARCH='', SORT='date';
 function viewJeux(){
@@ -491,7 +680,7 @@ function gameRow(g){
       <div class="detail-grid">
         ${MEMBERS.map(m=>{
           const v = g.ratings?.[m];
-          return `<div class="detail-line"><span class="pdot" style="background:${memberColor(m)}">${esc(initials(m))}</span>${v!=null?gauge(v):'<span class="game-meta">—</span>'}</div>`;
+          return `<div class="detail-line">${pdotHtml(m)}${v!=null?gauge(v):'<span class="game-meta">—</span>'}</div>`;
         }).join('')}
       </div>
       ${g.note ? `<div class="comment">« ${esc(g.note)} »</div>` : ''}
@@ -516,14 +705,23 @@ function viewAventures(){
 function arcCard(a, canDelete){
   const on = a.status === 'en cours';
   const canEnd = on && (a.participants||[]).includes(ME);
+  const n = (a.participants||[]).length;
+  const canJoin = on && a.slots && n < a.slots && !(a.participants||[]).includes(ME);
   return `<div class="arc ${on?'':'done'}">
     ${canDelete ? `<button class="trash-btn" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
-    <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span></div>
+    <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span>${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
     <div class="arc-game">▸ ${esc(a.gameName)}</div>
     <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
     <div class="arc-meta">Depuis le ${fmtDate(a.startDate)} · lancée par ${esc(a.createdBy)}
       ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}</div>
+    ${canJoin?`<button class="mini-btn" style="margin-top:8px" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
   </div>`;
+}
+async function joinArc(id){
+  await apiSend('/api/arcs/'+id+'/join', 'POST', { member: ME });
+  await loadAll();
+  toast('Bienvenue dans l\u2019aventure ! 🎉');
+  render();
 }
 function openDeleteArc(id){
   const a = ARCS.find(x=>x.id===id); if(!a) return;
@@ -800,7 +998,11 @@ function openNewArc(){
     <div class="sub">Annonce au groupe qu\u2019un nouvel arc commence.</div>
     <div class="field"><label>Nom de l\u2019arc *</label><input type="text" id="a-name" placeholder="Ex : L\u2019expédition du Nether"></div>
     <div class="field"><label>Jeu *</label><select id="a-game">${sorted.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
-    <div class="field"><label>Qui participe ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
+    <div class="field"><label>Qui est déjà chaud ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
+    <div class="field"><label>📣 Appel à la campagne — places totales visées (optionnel)</label>
+      <input type="number" id="a-slots" min="2" max="20" placeholder="Ex : 5 — laisse vide pour une campagne classique">
+      <div class="game-meta" style="margin-top:5px">S'il reste des places, une grosse notif Discord partira et les autres pourront rejoindre. La campagne démarre même si l'équipe n'est pas complète.</div>
+    </div>
     <div class="field"><label>Date de début</label><input type="date" id="a-date" value="${today}"></div>
     <div class="err" id="a-err"></div>
     <div class="modal-actions">
@@ -817,7 +1019,10 @@ async function saveArc(){
   const participants = getChips(m,'parts');
   if(!participants.length) return showErr('a-err','Sélectionne au moins un participant.');
   const startDate = document.getElementById('a-date').value || new Date().toISOString().slice(0,10);
-  const arc = { id:uid(), name, gameId, gameName:game?.name||'?', participants, startDate, createdBy:ME };
+  const slotsRaw = document.getElementById('a-slots').value;
+  const slots = slotsRaw === '' ? null : parseInt(slotsRaw);
+  if(slots !== null && (isNaN(slots) || slots < 2 || slots > 20)) return showErr('a-err','Le nombre de places doit être entre 2 et 20.');
+  const arc = { id:uid(), name, gameId, gameName:game?.name||'?', participants, startDate, createdBy:ME, slots };
   await apiSend('/api/arcs', 'POST', arc);
   await loadAll();
   toast('Aventure lancée — bon jeu à ' + participants.join(', ') + ' !');
