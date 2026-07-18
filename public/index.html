@@ -657,7 +657,7 @@ async function saveGame(editId){
       const pPrice = document.getElementById('f-promo-price').value;
       const pPlat = document.getElementById('f-promo-platform').value.trim();
       if(pPrice==='' || !pPlat) return showErr('f-err','Pour la promo, il faut au moins le nouveau prix et la plateforme.');
-      promo = { price: Math.max(0, parseFloat(pPrice)), platform: pPlat, until: document.getElementById('f-promo-until').value || '' };
+      promo = { price: Math.max(0, parseFloat(pPrice)), platform: pPlat, until: document.getElementById('f-promo-until').value || '', by: ME };
     }
     const game = { id:uid(), name, genres, link, price, note, proposedBy:[ME], ratings:{[ME]:envy}, promo };
     await apiSend('/api/games', 'POST', game);
@@ -778,7 +778,7 @@ async function savePromo(id){
   const platform = document.getElementById('p-platform').value.trim();
   if(price==='' || !platform) return showErr('p-err','Il faut au moins le nouveau prix et la plateforme.');
   const until = document.getElementById('p-until').value || '';
-  await apiSend('/api/games/'+id+'/promo', 'POST', { price: parseFloat(price), platform, until });
+  await apiSend('/api/games/'+id+'/promo', 'POST', { price: parseFloat(price), platform, until, by: ME });
   await loadAll();
   toast('Promo signalée — le groupe est prévenu 🏷️');
   closeModal(); render();
