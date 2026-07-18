@@ -93,6 +93,16 @@ setInterval(() => { for (const c of clients) c.write(': ping\n\n'); }, 25000);
 const isStr = (v, max = 300) => typeof v === 'string' && v.length <= max;
 const clampScore = v => Math.max(0, Math.min(10, Math.round(Number(v))));
 
+/* Valide un objet promo { price, platform, until? } envoyé par le front */
+function parsePromo(p) {
+  if (!p || typeof p !== 'object') return null;
+  const price = Number(p.price);
+  if (!isStr(p.platform, 60) || !p.platform.trim() || isNaN(price) || price < 0) return null;
+  const promo = { price: Math.round(price * 100) / 100, platform: p.platform.trim() };
+  if (isStr(p.until, 20) && p.until) promo.until = p.until;
+  return promo;
+}
+
 /* ==================== L'API ==================== */
 
 /* Tout l'état d'un coup : joueurs, jeux, aventures */
@@ -124,6 +134,9 @@ app.post('/api/games', async (req, res) => {
     if (b.ratings && typeof b.ratings === 'object') {
       for (const [m, s] of Object.entries(b.ratings)) if (isStr(m, 40)) game.ratings[m] = clampScore(s);
     }
+    // Promo signalée dès la proposition, si fournie
+    const promo = parsePromo(b.promo);
+    if (promo) game.promo = promo;
     await pool.query(`INSERT INTO games (id, data) VALUES ($1, $2)`, [game.id, JSON.stringify(game)]);
     broadcast();
     res.json({ ok: true });
@@ -152,6 +165,25 @@ app.put('/api/games/:id', async (req, res) => {
 app.delete('/api/games/:id', async (req, res) => {
   try {
     await pool.query(`DELETE FROM games WHERE id=$1`, [req.params.id]);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Signaler, modifier ou retirer une promo : { price, platform, until? } ou { remove: true } */
+app.post('/api/games/:id/promo', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT data FROM games WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const game = rows[0].data;
+    if (req.body && req.body.remove) {
+      delete game.promo;
+    } else {
+      const promo = parsePromo(req.body);
+      if (!promo) return res.status(400).json({ error: 'invalid' });
+      game.promo = promo;
+    }
+    await pool.query(`UPDATE games SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(game)]);
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -203,6 +235,15 @@ app.post('/api/arcs/:id/end', async (req, res) => {
       `UPDATE arcs SET data = data || jsonb_build_object('status', 'terminée', 'endedAt', $2::text) WHERE id=$1`,
       [req.params.id, new Date().toISOString()]
     );
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Supprimer une aventure (le front ne propose l'option qu'à son créateur) */
+app.delete('/api/arcs/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM arcs WHERE id=$1`, [req.params.id]);
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
