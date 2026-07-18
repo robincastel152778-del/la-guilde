@@ -388,27 +388,77 @@ app.post('/api/arcs', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
-/* Rejoindre une aventure ouverte : { member } */
+/* Rejoindre une aventure ouverte : { member }
+   Mise à jour ATOMIQUE : la base ajoute le participant en une seule opération,
+   donc deux joueurs qui cliquent en même temps ne peuvent plus s'écraser
+   mutuellement (et on ne peut pas dépasser le nombre de places). */
 app.post('/api/arcs/:id/join', async (req, res) => {
   try {
     const { member } = req.body || {};
     if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
-    const { rows } = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'not_found' });
-    const arc = rows[0].data;
-    if (arc.status !== 'en cours') return res.status(400).json({ error: 'closed' });
-    if (!(arc.participants || []).includes(member)) {
-      arc.participants = [...(arc.participants || []), member];
-      await pool.query(`UPDATE arcs SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(arc)]);
-      const n = arc.participants.length;
+    const upd = await pool.query(
+      `UPDATE arcs
+       SET data = jsonb_set(data, '{participants}', (data->'participants') || to_jsonb($2::text))
+       WHERE id = $1
+         AND data->>'status' = 'en cours'
+         AND NOT (data->'participants' ? $2::text)
+         AND jsonb_array_length(data->'participants') < COALESCE((data->>'slots')::int, 999999)
+       RETURNING data`,
+      [req.params.id, member]
+    );
+    if (upd.rows.length) {
+      const arc = upd.rows[0].data;
+      const n = (arc.participants || []).length;
       if (arc.slots && n >= arc.slots) {
         notifyDiscord(`🎉 **${member}** rejoint « ${arc.name} » — l'équipe est AU COMPLET (${n}/${arc.slots}) ! GO GO GO !`);
       } else {
         notifyDiscord(`➕ **${member}** rejoint l'aventure « ${arc.name} » sur **${arc.gameName}**${arc.slots ? ` (${n}/${arc.slots})` : ''}`);
       }
+      broadcast();
+      return res.json({ ok: true });
     }
-    broadcast();
-    res.json({ ok: true });
+    // Rien mis à jour : on explique pourquoi
+    const { rows } = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const arc = rows[0].data;
+    if ((arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'already' });
+    if (arc.status !== 'en cours') return res.json({ ok: false, reason: 'closed' });
+    return res.json({ ok: false, reason: 'full' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Se retirer d'une aventure : { member }
+   Autorisé uniquement tant qu'elle n'a pas commencé (date de début future).
+   Même principe atomique que le join : pas de risque d'écrasement. */
+app.post('/api/arcs/:id/leave', async (req, res) => {
+  try {
+    const { member } = req.body || {};
+    if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
+    const today = new Date().toISOString().slice(0, 10);
+    const upd = await pool.query(
+      `UPDATE arcs
+       SET data = jsonb_set(data, '{participants}', (data->'participants') - $2::text)
+       WHERE id = $1
+         AND data->>'status' = 'en cours'
+         AND data->'participants' ? $2::text
+         AND data->>'startDate' > $3
+       RETURNING data`,
+      [req.params.id, member, today]
+    );
+    if (upd.rows.length) {
+      const arc = upd.rows[0].data;
+      const n = (arc.participants || []).length;
+      notifyDiscord(`➖ **${member}** se retire de « ${arc.name} »${arc.slots ? ` (${n}/${arc.slots} — une place se libère !)` : ''}`);
+      broadcast();
+      return res.json({ ok: true });
+    }
+    // Rien mis à jour : on explique pourquoi
+    const { rows } = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const arc = rows[0].data;
+    if (!(arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'not_in' });
+    if (arc.status !== 'en cours') return res.json({ ok: false, reason: 'closed' });
+    return res.json({ ok: false, reason: 'started' });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
