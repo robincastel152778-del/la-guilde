@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>La Guilde — QG des soirées jeux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0F1118; --panel:#171A24; --panel2:#1D2130; --border:#262B3B;
+    --text:#E9EBF5; --muted:#8A90A6; --accent:#8B7CFF; --accent-soft:rgba(139,124,255,.14);
+    --gold:#FFC857; --green:#4ADE80; --coral:#FF6B81;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg); color:var(--text); font-family:'Outfit',system-ui,sans-serif; min-height:100%;}
+  body{font-size:15px; line-height:1.5;}
+  ::selection{background:var(--accent); color:#fff;}
+  button{font-family:inherit;}
+  a{color:var(--accent);}
+
+  .pixel{font-family:'Silkscreen',monospace;}
+
+  /* ===== Header ===== */
+  header{position:sticky; top:0; z-index:40; background:rgba(15,17,24,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--border);}
+  .head-inner{max-width:1100px; margin:0 auto; padding:12px 18px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .logo{font-family:'Silkscreen',monospace; font-size:18px; letter-spacing:1px; color:var(--gold); text-shadow:0 0 18px rgba(255,200,87,.35);}
+  .logo span{color:var(--accent);}
+  .head-spacer{flex:1;}
+  .profile-chip{display:flex; align-items:center; gap:8px; background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:5px 12px 5px 6px; font-weight:600; font-size:13px;}
+  .head-btn{background:none; border:1px solid var(--border); color:var(--muted); border-radius:999px; padding:6px 12px; font-size:12.5px; cursor:pointer; transition:.15s;}
+  .head-btn:hover{color:var(--text); border-color:var(--accent);}
+
+  nav{max-width:1100px; margin:0 auto; padding:0 18px 10px; display:flex; gap:8px; flex-wrap:wrap;}
+  .tab{background:none; border:1px solid var(--border); color:var(--muted); border-radius:10px; padding:7px 14px; font-size:13.5px; font-weight:600; cursor:pointer; transition:.15s; position:relative;}
+  .tab:hover{color:var(--text);}
+  .tab.active{background:var(--accent-soft); border-color:var(--accent); color:var(--text);}
+  .tab .badge{position:absolute; top:-7px; right:-7px; background:var(--coral); color:#fff; font-size:11px; font-weight:700; border-radius:999px; min-width:18px; height:18px; display:flex; align-items:center; justify-content:center; padding:0 5px;}
+
+  main{max-width:1100px; margin:0 auto; padding:22px 18px 80px;}
+
+  /* ===== Cards / sections ===== */
+  .eyebrow{font-family:'Silkscreen',monospace; font-size:10.5px; letter-spacing:1px; color:var(--accent); text-transform:uppercase; margin-bottom:10px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px; margin-bottom:18px;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:760px){ .grid2{grid-template-columns:1fr;} }
+
+  .empty{color:var(--muted); font-size:13.5px; padding:8px 0;}
+
+  /* ===== Player chips ===== */
+  .pchip{display:inline-flex; align-items:center; gap:6px; background:var(--panel2); border:1px solid var(--border); border-radius:999px; padding:3px 10px 3px 4px; font-size:12.5px; font-weight:600; margin:2px 3px 2px 0;}
+  .pdot{width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#0F1118;}
+  .pchip .score{color:var(--gold); font-weight:700;}
+
+  /* ===== Envy gauge ===== */
+  .gauge-wrap{display:flex; align-items:center; gap:8px;}
+  .gauge{position:relative; width:110px; height:10px; background:var(--panel2); border:1px solid var(--border); border-radius:4px; overflow:hidden; flex-shrink:0;}
+  .gauge-fill{position:absolute; inset:0; background:linear-gradient(90deg,var(--accent),var(--gold)); border-radius:3px;}
+  .gauge-ticks{position:absolute; inset:0; background:repeating-linear-gradient(90deg,transparent 0 calc(10% - 1px),rgba(15,17,24,.85) calc(10% - 1px) 10%);}
+  .gauge-num{font-weight:700; color:var(--gold); font-size:13px; min-width:34px;}
+
+  /* ===== Action buttons (espace perso) ===== */
+  .actions{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:20px;}
+  .action-btn{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px 14px; cursor:pointer; text-align:left; color:var(--text); transition:.15s; position:relative;}
+  .action-btn:hover{border-color:var(--accent); background:var(--panel2); transform:translateY(-1px);}
+  .action-btn .icon{font-size:20px; margin-bottom:6px; display:block;}
+  .action-btn .label{font-weight:700; font-size:14.5px;}
+  .action-btn .hint{color:var(--muted); font-size:12px; margin-top:2px;}
+  .action-btn .count{position:absolute; top:10px; right:12px; background:var(--coral); color:#fff; font-size:12px; font-weight:700; border-radius:999px; min-width:20px; height:20px; display:flex; align-items:center; justify-content:center; padding:0 6px;}
+
+  /* ===== Game rows ===== */
+  .game-row{border-bottom:1px solid var(--border); padding:12px 0;}
+  .game-row:last-child{border-bottom:none;}
+  .game-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; cursor:pointer;}
+  .game-name{font-weight:700; font-size:15px;}
+  .game-meta{color:var(--muted); font-size:12.5px;}
+  .tag{display:inline-block; background:var(--accent-soft); color:var(--accent); border-radius:6px; padding:1px 8px; font-size:11.5px; font-weight:600; margin:2px 3px 0 0;}
+  .price{font-size:12.5px; font-weight:700; color:var(--green);}
+  .price.paid{color:var(--gold);}
+  .game-detail{display:none; padding:10px 0 4px; border-top:1px dashed var(--border); margin-top:10px;}
+  .game-row.open .game-detail{display:block;}
+  .detail-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:6px 14px; margin:8px 0;}
+  .detail-line{display:flex; align-items:center; gap:8px; font-size:13px;}
+  .comment{background:var(--panel2); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; padding:8px 12px; font-size:13px; color:var(--muted); margin-top:8px; font-style:italic;}
+  .mini-btn{background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:4px 10px; font-size:12px; cursor:pointer; transition:.15s;}
+  .mini-btn:hover{color:var(--text); border-color:var(--accent);}
+  .mini-btn.danger:hover{color:var(--coral); border-color:var(--coral);}
+
+  /* ===== Arc cards ===== */
+  .arc{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
+  .arc.done{opacity:.55;}
+  .arc-name{font-weight:700; font-size:14.5px;}
+  .arc-game{color:var(--gold); font-weight:600; font-size:13px;}
+  .arc-meta{color:var(--muted); font-size:12px; margin-top:2px;}
+  .arc-status{display:inline-block; font-size:11px; font-weight:700; border-radius:6px; padding:1px 8px; margin-left:6px; vertical-align:middle;}
+  .arc-status.on{background:rgba(74,222,128,.15); color:var(--green);}
+  .arc-status.off{background:rgba(138,144,166,.15); color:var(--muted);}
+
+  /* ===== Top 5 ===== */
+  .top-row{display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--border);}
+  .top-row:last-child{border-bottom:none;}
+  .rank{font-family:'Silkscreen',monospace; font-size:14px; color:var(--gold); width:26px; flex-shrink:0; text-align:center;}
+  .rank.r1{font-size:17px; text-shadow:0 0 14px rgba(255,200,87,.5);}
+  .top-name{font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .top-count{color:var(--muted); font-size:11.5px;}
+
+  /* ===== Onboarding ===== */
+  .onboard{max-width:560px; margin:8vh auto 0; text-align:center; padding:0 18px;}
+  .onboard h1{font-family:'Silkscreen',monospace; font-size:26px; color:var(--gold); margin-bottom:6px; text-shadow:0 0 24px rgba(255,200,87,.35);}
+  .onboard h1 span{color:var(--accent);}
+  .onboard p{color:var(--muted); margin-bottom:26px;}
+  .profiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px;}
+  .profile-btn{background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:18px 10px; cursor:pointer; color:var(--text); font-weight:700; font-size:15px; display:flex; flex-direction:column; align-items:center; gap:10px; transition:.15s;}
+  .profile-btn:hover{border-color:var(--accent); background:var(--panel2); transform:translateY(-2px);}
+  .profile-btn .pdot{width:40px; height:40px; font-size:15px;}
+
+  /* ===== Modal ===== */
+  .overlay{position:fixed; inset:0; background:rgba(8,9,14,.75); backdrop-filter:blur(3px); z-index:100; display:flex; align-items:flex-start; justify-content:center; padding:5vh 14px; overflow-y:auto;}
+  .modal{background:var(--panel); border:1px solid var(--border); border-radius:16px; width:100%; max-width:560px; padding:22px;}
+  .modal h2{font-size:17px; font-weight:800; margin-bottom:2px;}
+  .modal .sub{color:var(--muted); font-size:13px; margin-bottom:16px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;}
+  .field input[type=text],.field input[type=url],.field input[type=number],.field input[type=date],.field textarea,.field select{
+    width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:9px 12px; color:var(--text); font-family:inherit; font-size:14px;
+  }
+  .field textarea{resize:vertical; min-height:64px;}
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none; border-color:var(--accent);}
+  .chips{display:flex; flex-wrap:wrap; gap:6px;}
+  .chip-opt{background:var(--panel2); border:1px solid var(--border); color:var(--muted); border-radius:999px; padding:5px 13px; font-size:13px; font-weight:600; cursor:pointer; transition:.12s;}
+  .chip-opt.sel{background:var(--accent-soft); border-color:var(--accent); color:var(--text);}
+  .score-picker{display:flex; flex-wrap:wrap; gap:5px;}
+  .score-btn{width:34px; height:34px; border-radius:9px; background:var(--panel2); border:1px solid var(--border); color:var(--muted); font-weight:700; font-size:13.5px; cursor:pointer; transition:.12s;}
+  .score-btn:hover{border-color:var(--gold);}
+  .score-btn.sel{background:var(--gold); border-color:var(--gold); color:#0F1118;}
+  .modal-actions{display:flex; gap:10px; justify-content:flex-end; margin-top:18px;}
+  .btn{border-radius:10px; padding:9px 18px; font-weight:700; font-size:14px; cursor:pointer; border:1px solid var(--border); background:var(--panel2); color:var(--muted); transition:.15s;}
+  .btn:hover{color:var(--text);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.primary:hover{filter:brightness(1.1);}
+  .rate-item{border-bottom:1px solid var(--border); padding:12px 0;}
+  .rate-item:last-child{border-bottom:none;}
+  .rate-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
+  .err{color:var(--coral); font-size:13px; margin-top:8px; display:none;}
+
+  /* ===== Toast ===== */
+  .toast{position:fixed; bottom:22px; left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--accent); color:var(--text); border-radius:12px; padding:10px 20px; font-weight:600; font-size:14px; z-index:200; box-shadow:0 8px 30px rgba(0,0,0,.5); animation:toastin .25s ease;}
+  @keyframes toastin{from{opacity:0; transform:translateX(-50%) translateY(10px);} to{opacity:1; transform:translateX(-50%) translateY(0);}}
+
+  /* ===== Loading ===== */
+  .loading{text-align:center; padding:14vh 20px; color:var(--muted);}
+  .loading .pixel{color:var(--accent); font-size:15px; animation:blink 1.1s steps(2) infinite;}
+  @keyframes blink{50%{opacity:.35;}}
+
+  .sortbar{display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;}
+  .sortbar input,.sortbar select{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:7px 12px; color:var(--text); font-family:inherit; font-size:13.5px;}
+  .sortbar input{flex:1; min-width:160px;}
+
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important;} }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading"><div class="pixel">CHARGEMENT DU QG...</div></div></div>
+
+<script>
+/* =====================================================
+   LA GUILDE — QG des soirées jeux (front)
+   Parle au serveur via l'API /api/* et reçoit les mises à
+   jour des autres joueurs en temps réel (SSE).
+   ===================================================== */
+
+const GENRES = ['Coop','Survie','FPS','MOBA','Horreur','Sandbox','MMO','RPG','Stratégie','Battle Royale','Party game','Roguelike','Course','Simulation'];
+const HUES = [265,45,150,200,330,20,95,230];
+
+let ME=null, MEMBERS=[], GAMES=[], ARCS=[], TAB='panneau';
+
+/* ---------- Couche API : toutes les données passent par le serveur ---------- */
+async function apiGet(path){
+  const r = await fetch(path);
+  if(!r.ok) throw new Error('api ' + r.status);
+  return r.json();
+}
+async function apiSend(path, method, body){
+  const r = await fetch(path, { method, headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined });
+  if(!r.ok){ toast('Erreur serveur — réessaie'); throw new Error('api ' + r.status); }
+  return r.json().catch(()=>({}));
+}
+async function loadAll(){
+  const s = await apiGet('/api/state');
+  MEMBERS = s.members || []; GAMES = s.games || []; ARCS = s.arcs || [];
+  GAMES.sort((a,b)=> new Date(a.addedAt) - new Date(b.addedAt));
+}
+/* Le profil choisi est mémorisé sur CE navigateur uniquement */
+function loadProfile(){ try{ return localStorage.getItem('guilde:profile'); }catch(e){ return null; } }
+function saveProfile(name){ try{ name===null ? localStorage.removeItem('guilde:profile') : localStorage.setItem('guilde:profile', name); }catch(e){} }
+
+/* ---------- Utils ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const fmtDate = iso => { try{ return new Date(iso).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return iso; } };
+function memberColor(name){
+  const i = MEMBERS.indexOf(name);
+  const hue = HUES[(i>=0?i:Math.abs(hash(name)))%HUES.length];
+  return `hsl(${hue} 75% 65%)`;
+}
+function hash(s){ let h=0; for(const c of s) h=(h*31 + c.charCodeAt(0))|0; return h; }
+const initials = n => n.slice(0,2).toUpperCase();
+
+function pchip(name, score){
+  return `<span class="pchip"><span class="pdot" style="background:${memberColor(name)}">${esc(initials(name))}</span>${esc(name)}${score!=null?` <span class="score">${score}</span>`:''}</span>`;
+}
+function gauge(score){
+  const s = Math.max(0, Math.min(10, score));
+  return `<span class="gauge-wrap"><span class="gauge"><span class="gauge-fill" style="width:${s*10}%"></span><span class="gauge-ticks"></span></span><span class="gauge-num">${(Math.round(s*10)/10).toString().replace('.',',')}</span></span>`;
+}
+function avgOf(game){
+  const vals = Object.values(game.ratings||{}).filter(v => typeof v === 'number');
+  if(!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+function priceLabel(p){
+  if(p === 0) return '<span class="price">Gratuit</span>';
+  if(p == null || p === '') return '<span class="game-meta">prix ?</span>';
+  return `<span class="price paid">${esc(p)} €</span>`;
+}
+function toast(msg){
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  const t = document.createElement('div'); t.className='toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(()=>t.remove(), 2600);
+}
+
+/* ---------- Init + temps réel ---------- */
+async function init(){
+  ME = loadProfile();
+  try{ await loadAll(); }
+  catch(e){
+    document.getElementById('app').innerHTML =
+      '<div class="loading"><div class="pixel">SERVEUR EN COURS DE RÉVEIL...</div>' +
+      '<p style="margin-top:12px">Sur l\u2019offre gratuite, le serveur s\u2019endort quand personne ne l\u2019utilise.<br>Ça peut prendre jusqu\u2019à une minute — nouvelle tentative automatique.</p></div>';
+    setTimeout(init, 5000);
+    return;
+  }
+  startLive();
+  render();
+}
+let ES = null;
+function startLive(){
+  if(ES) return;
+  try{
+    ES = new EventSource('/api/events');
+    ES.onmessage = async ev => {
+      if(ev.data === 'update'){ try{ await loadAll(); render(); }catch(e){} }
+    };
+  }catch(e){ /* pas grave : le bouton Actualiser reste là */ }
+}
+async function refreshData(silent){
+  try{ await loadAll(); }
+  catch(e){ if(!silent) toast('Serveur injoignable — réessaie'); return; }
+  render();
+  if(!silent) toast('Données à jour');
+}
+
+/* ---------- Render root ---------- */
+function render(){
+  const app = document.getElementById('app');
+  if(!ME){ app.innerHTML = renderOnboard(); return; }
+  const toRate = GAMES.filter(g => g.ratings?.[ME] == null && !(g.proposedBy||[]).includes(ME)).length;
+  app.innerHTML = `
+    <header>
+      <div class="head-inner">
+        <div class="logo">LA <span>GUILDE</span></div>
+        <div class="head-spacer"></div>
+        <span class="profile-chip"><span class="pdot" style="background:${memberColor(ME)}">${esc(initials(ME))}</span>${esc(ME)}</span>
+        <button class="head-btn" onclick="switchProfile()">Changer</button>
+        <button class="head-btn" onclick="refreshData()" title="Recharger les données">⟳ Actualiser</button>
+      </div>
+      <nav>
+        <button class="tab ${TAB==='panneau'?'active':''}" onclick="setTab('panneau')">Panneau général</button>
+        <button class="tab ${TAB==='perso'?'active':''}" onclick="setTab('perso')">Mon espace${toRate?`<span class="badge">${toRate}</span>`:''}</button>
+        <button class="tab ${TAB==='jeux'?'active':''}" onclick="setTab('jeux')">Tous les jeux</button>
+        <button class="tab ${TAB==='aventures'?'active':''}" onclick="setTab('aventures')">Aventures</button>
+      </nav>
+    </header>
+    <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
+}
+function setTab(t){ TAB=t; refreshData(true); }
+function switchProfile(){ ME=null; saveProfile(null); render(); }
+
+/* ---------- Onboarding ---------- */
+function renderOnboard(){
+  return `<div class="onboard">
+    <h1>LA <span>GUILDE</span></h1>
+    <p>Le QG du groupe pour proposer des jeux, les noter, et enfin savoir à quoi jouer ensemble.<br>Qui es-tu ?</p>
+    <div class="profiles">
+      ${MEMBERS.map(m=>`<button class="profile-btn" onclick="pickProfile('${esc(m)}')"><span class="pdot" style="background:${memberColor(m)}">${esc(initials(m))}</span>${esc(m)}</button>`).join('')}
+    </div>
+  </div>`;
+}
+function pickProfile(name){ ME=name; saveProfile(name); render(); }
+
+/* ---------- Vue : Panneau général ---------- */
+function viewPanneau(){
+  const recent = [...GAMES].sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt)).slice(0,3);
+  const rated = GAMES.map(g=>({g, avg:avgOf(g), n:Object.keys(g.ratings||{}).length})).filter(x=>x.avg!=null);
+  const top5 = rated.sort((a,b)=> b.avg-a.avg || b.n-a.n).slice(0,5);
+  const lastArcs = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  return `
+    <div class="card">
+      <div class="eyebrow">Derniers jeux proposés</div>
+      ${recent.length ? recent.map(gameRow).join('') : '<div class="empty">Aucun jeu pour l\u2019instant — sois le premier à en proposer un depuis ton espace.</div>'}
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="eyebrow">Top 5 du groupe</div>
+        ${top5.length ? top5.map((x,i)=>`
+          <div class="top-row">
+            <span class="rank ${i===0?'r1':''}">${i+1}</span>
+            <span class="top-name">${esc(x.g.name)}<div class="top-count">${x.n} note${x.n>1?'s':''}</div></span>
+            ${gauge(x.avg)}
+          </div>`).join('') : '<div class="empty">Personne n\u2019a encore noté de jeu.</div>'}
+      </div>
+      <div class="card">
+        <div class="eyebrow">Dernières aventures lancées</div>
+        ${lastArcs.length ? lastArcs.map(arcCard).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
+      </div>
+    </div>`;
+}
+
+/* ---------- Vue : Mon espace ---------- */
+function viewPerso(){
+  const toRate = GAMES.filter(g => g.ratings?.[ME] == null && !(g.proposedBy||[]).includes(ME));
+  const myArcs = ARCS.filter(a => a.status==='en cours' && (a.participants||[]).includes(ME))
+                     .sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const myRated = GAMES.filter(g => typeof g.ratings?.[ME] === 'number');
+  const myTop = [...myRated].sort((a,b)=> b.ratings[ME]-a.ratings[ME]).slice(0,5);
+  const discover = GAMES.filter(g => g.ratings?.[ME]==null)
+    .map(g=>({g, avg:avgOf(g)})).filter(x=>x.avg!=null && x.avg>=7)
+    .sort((a,b)=>b.avg-a.avg).slice(0,4);
+
+  return `
+    <div class="actions">
+      <button class="action-btn" onclick="openAddGame()"><span class="icon">🎮</span><span class="label">Proposer un jeu</span><div class="hint">Nom, genres, prix, ton envie…</div></button>
+      <button class="action-btn" onclick="openRateNew()"><span class="icon">⭐</span><span class="label">Noter les nouveautés</span><div class="hint">Les jeux que tu n\u2019as pas encore notés</div>${toRate.length?`<span class="count">${toRate.length}</span>`:''}</button>
+      <button class="action-btn" onclick="openEditRatings()"><span class="icon">✏️</span><span class="label">Modifier mes notes</span><div class="hint">Changer une envie déjà donnée</div></button>
+      <button class="action-btn" onclick="openNewArc()"><span class="icon">🚀</span><span class="label">Lancer une aventure</span><div class="hint">Annonce un nouvel arc au groupe</div></button>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">Mes campagnes en cours</div>
+      ${myArcs.length ? myArcs.map(arcCard).join('') : '<div class="empty">Aucune campagne en cours. Lance une aventure pour en démarrer une !</div>'}
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="eyebrow">Mes plus grosses envies</div>
+        ${myTop.length ? myTop.map(g=>{
+          const partners = MEMBERS.filter(m=> m!==ME && (g.ratings?.[m]??-1) >= 7);
+          return `<div class="game-row">
+            <div class="game-head" style="cursor:default">
+              <span class="game-name">${esc(g.name)}</span>${gauge(g.ratings[ME])}
+            </div>
+            <div style="margin-top:6px; font-size:12.5px; color:var(--muted)">
+              ${partners.length ? 'Chauds pour y jouer : ' + partners.map(m=>pchip(m, g.ratings[m])).join('')
+                : 'Personne d\u2019autre ne l\u2019a bien noté pour l\u2019instant… fais campagne !'}
+            </div>
+          </div>`; }).join('') : '<div class="empty">Note quelques jeux pour voir tes envies ici.</div>'}
+      </div>
+      <div class="card">
+        <div class="eyebrow">À découvrir — le groupe adore</div>
+        ${discover.length ? discover.map(x=>{
+          const fans = MEMBERS.filter(m=> m!==ME && (x.g.ratings?.[m]??-1) >= 7);
+          const talkTo = [...new Set([...(x.g.proposedBy||[]), ...fans])].filter(m=>m!==ME);
+          return `<div class="game-row">
+            <div class="game-head" style="cursor:default"><span class="game-name">${esc(x.g.name)}</span>${gauge(x.avg)}</div>
+            <div style="margin-top:6px; font-size:12.5px; color:var(--muted)">
+              En parler avec : ${talkTo.length ? talkTo.map(m=>pchip(m, x.g.ratings?.[m])).join('') : '—'}
+            </div>
+          </div>`; }).join('') : '<div class="empty">Rien à signaler : tu as déjà noté tous les jeux populaires du groupe.</div>'}
+      </div>
+    </div>`;
+}
+
+/* ---------- Vue : Tous les jeux ---------- */
+let SEARCH='', SORT='date';
+function viewJeux(){
+  let list = GAMES.filter(g => g.name.toLowerCase().includes(SEARCH.toLowerCase()));
+  if(SORT==='date') list.sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
+  if(SORT==='nom') list.sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+  if(SORT==='note') list.sort((a,b)=> (avgOf(b)??-1)-(avgOf(a)??-1));
+  if(SORT==='prix') list.sort((a,b)=> (a.price??1e9)-(b.price??1e9));
+  return `
+    <div class="card">
+      <div class="eyebrow">Le grimoire — ${GAMES.length} jeux proposés</div>
+      <div class="sortbar">
+        <input type="text" placeholder="Chercher un jeu…" value="${esc(SEARCH)}" oninput="SEARCH=this.value; rerenderJeux(this)">
+        <select onchange="SORT=this.value; render()">
+          <option value="date" ${SORT==='date'?'selected':''}>Plus récents</option>
+          <option value="note" ${SORT==='note'?'selected':''}>Mieux notés</option>
+          <option value="nom" ${SORT==='nom'?'selected':''}>A → Z</option>
+          <option value="prix" ${SORT==='prix'?'selected':''}>Prix croissant</option>
+        </select>
+      </div>
+      <div id="jeux-list">${list.map(gameRow).join('') || '<div class="empty">Aucun jeu ne correspond.</div>'}</div>
+    </div>`;
+}
+function rerenderJeux(input){
+  const pos = input.selectionStart;
+  const listEl = document.getElementById('jeux-list');
+  let list = GAMES.filter(g => g.name.toLowerCase().includes(SEARCH.toLowerCase()));
+  if(SORT==='date') list.sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
+  if(SORT==='nom') list.sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+  if(SORT==='note') list.sort((a,b)=> (avgOf(b)??-1)-(avgOf(a)??-1));
+  if(SORT==='prix') list.sort((a,b)=> (a.price??1e9)-(b.price??1e9));
+  listEl.innerHTML = list.map(gameRow).join('') || '<div class="empty">Aucun jeu ne correspond.</div>';
+  input.setSelectionRange(pos,pos);
+}
+
+function gameRow(g){
+  const avg = avgOf(g);
+  const mine = g.ratings?.[ME];
+  const canEdit = (g.proposedBy||[]).includes(ME);
+  return `<div class="game-row" id="row-${g.id}">
+    <div class="game-head" onclick="document.getElementById('row-${g.id}').classList.toggle('open')">
+      <span class="game-name">${esc(g.name)}</span>
+      ${(g.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+      ${priceLabel(g.price)}
+      <span style="flex:1"></span>
+      ${avg!=null ? gauge(avg) : '<span class="game-meta">pas encore noté</span>'}
+    </div>
+    <div class="game-detail">
+      <div class="game-meta">Proposé par ${(g.proposedBy||[]).map(p=>pchip(p)).join('')} · ajouté le ${fmtDate(g.addedAt)}
+        ${g.link ? ` · <a href="${esc(g.link)}" target="_blank" rel="noopener">voir le trailer / la page</a>` : ''}</div>
+      <div class="detail-grid">
+        ${MEMBERS.map(m=>{
+          const v = g.ratings?.[m];
+          return `<div class="detail-line"><span class="pdot" style="background:${memberColor(m)}">${esc(initials(m))}</span>${v!=null?gauge(v):'<span class="game-meta">—</span>'}</div>`;
+        }).join('')}
+      </div>
+      ${g.note ? `<div class="comment">« ${esc(g.note)} »</div>` : ''}
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="mini-btn" onclick="openRateOne('${g.id}')">${mine!=null?'Changer ma note ('+mine+')':'Noter ce jeu'}</button>
+        ${canEdit ? `<button class="mini-btn" onclick="openEditGame('${g.id}')">Modifier la fiche</button>` : ''}
+        <button class="mini-btn danger" onclick="openDeleteGame('${g.id}')">Supprimer</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Vue : Aventures ---------- */
+function viewAventures(){
+  const list = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  return `<div class="card">
+    <div class="eyebrow">Toutes les aventures du groupe</div>
+    ${list.length ? list.map(arcCard).join('') : '<div class="empty">Aucune aventure pour l\u2019instant. Le premier arc s\u2019écrit depuis « Mon espace ».</div>'}
+  </div>`;
+}
+function arcCard(a){
+  const on = a.status === 'en cours';
+  const canEnd = on && (a.participants||[]).includes(ME);
+  return `<div class="arc ${on?'':'done'}">
+    <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span></div>
+    <div class="arc-game">▸ ${esc(a.gameName)}</div>
+    <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
+    <div class="arc-meta">Depuis le ${fmtDate(a.startDate)} · lancée par ${esc(a.createdBy)}
+      ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}</div>
+  </div>`;
+}
+async function endArc(id){
+  await apiSend('/api/arcs/'+id+'/end', 'POST', {});
+  await loadAll();
+  toast('Aventure terminée — GG !');
+  render();
+}
+
+/* ---------- Modales ---------- */
+function openModal(html){
+  closeModal();
+  const ov = document.createElement('div'); ov.className='overlay'; ov.id='overlay';
+  ov.innerHTML = `<div class="modal">${html}</div>`;
+  ov.addEventListener('click', e => { if(e.target===ov) closeModal(); });
+  document.body.appendChild(ov);
+}
+function closeModal(){ document.getElementById('overlay')?.remove(); }
+function showErr(id,msg){ const e=document.getElementById(id); if(e){e.textContent=msg; e.style.display='block';} }
+
+function scorePicker(name, current){
+  return `<div class="score-picker" data-name="${name}">
+    ${Array.from({length:11},(_,i)=>`<button type="button" class="score-btn ${current===i?'sel':''}" data-v="${i}" onclick="pickScore(this)">${i}</button>`).join('')}
+  </div>`;
+}
+function pickScore(btn){
+  btn.parentElement.querySelectorAll('.score-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+function getScore(container, name){
+  const sel = container.querySelector(`.score-picker[data-name="${name}"] .score-btn.sel`);
+  return sel ? parseInt(sel.dataset.v) : null;
+}
+function chipMulti(name, options, selected){
+  return `<div class="chips" data-name="${name}">
+    ${options.map(o=>`<button type="button" class="chip-opt ${selected?.includes(o)?'sel':''}" data-v="${esc(o)}" onclick="this.classList.toggle('sel')">${esc(o)}</button>`).join('')}
+  </div>`;
+}
+function getChips(container, name){
+  return [...container.querySelectorAll(`.chips[data-name="${name}"] .chip-opt.sel`)].map(b=>b.dataset.v);
+}
+
+/* --- Proposer / modifier un jeu --- */
+function openAddGame(){ openGameForm(null); }
+function openEditGame(id){ openGameForm(GAMES.find(g=>g.id===id)); }
+function openGameForm(g){
+  const edit = !!g;
+  const allGenres = [...new Set([...GENRES, ...GAMES.flatMap(x=>x.genres||[])])];
+  openModal(`
+    <h2>${edit?'Modifier la fiche':'Proposer un jeu'}</h2>
+    <div class="sub">${edit?'Tu peux modifier cette fiche car tu l\u2019as proposée.':'Il rejoindra la liste commune, et tout le monde pourra le noter.'}</div>
+    <div class="field"><label>Nom du jeu *</label><input type="text" id="f-name" value="${esc(g?.name||'')}" placeholder="Ex : Lethal Company"></div>
+    <div class="field"><label>Genres (plusieurs possibles)</label>
+      ${chipMulti('genres', allGenres, g?.genres||[])}
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="text" id="f-newgenre" placeholder="Autre genre…" style="flex:1; background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:7px 12px; color:var(--text); font-family:inherit; font-size:13px;">
+        <button type="button" class="btn" onclick="addGenreChip()">Ajouter</button>
+      </div>
+    </div>
+    ${edit ? '' : `<div class="field"><label>À quel point tu veux y jouer ? *</label>${scorePicker('envy', null)}</div>`}
+    <div class="field"><label>Lien trailer / page Steam</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/…"></div>
+    <div class="field"><label>Prix (€) — laisse vide si inconnu, 0 si gratuit</label><input type="number" id="f-price" min="0" step="0.01" value="${g?.price ?? ''}"></div>
+    <div class="field"><label>Petit mot (optionnel)</label><textarea id="f-note" placeholder="Pourquoi ce jeu ? Un argument de vente ?">${esc(g?.note||'')}</textarea></div>
+    <div class="err" id="f-err"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="saveGame(${edit?`'${g.id}'`:'null'})">${edit?'Enregistrer':'Proposer au groupe'}</button>
+    </div>`);
+}
+function addGenreChip(){
+  const inp = document.getElementById('f-newgenre');
+  const v = inp.value.trim(); if(!v) return;
+  const chips = document.querySelector('.chips[data-name="genres"]');
+  const b = document.createElement('button');
+  b.type='button'; b.className='chip-opt sel'; b.dataset.v=v; b.textContent=v;
+  b.onclick=()=>b.classList.toggle('sel');
+  chips.appendChild(b); inp.value='';
+}
+async function saveGame(editId){
+  const m = document.querySelector('.modal');
+  const name = document.getElementById('f-name').value.trim();
+  if(!name) return showErr('f-err','Il faut au moins le nom du jeu.');
+  const genres = getChips(m,'genres');
+  const link = document.getElementById('f-link').value.trim();
+  const priceRaw = document.getElementById('f-price').value;
+  const price = priceRaw === '' ? null : Math.max(0, parseFloat(priceRaw));
+  const note = document.getElementById('f-note').value.trim();
+
+  if(editId){
+    await apiSend('/api/games/'+editId, 'PUT', {name, genres, link, price, note});
+    toast('Fiche mise à jour');
+  } else {
+    const envy = getScore(m,'envy');
+    if(envy==null) return showErr('f-err','Donne ta note d\u2019envie (0 à 10) — c\u2019est tout l\u2019intérêt !');
+    const dup = GAMES.find(g=>g.name.toLowerCase()===name.toLowerCase());
+    if(dup) return showErr('f-err','« '+dup.name+' » est déjà dans la liste. Note-le plutôt depuis « Tous les jeux ».');
+    const game = { id:uid(), name, genres, link, price, note, proposedBy:[ME], ratings:{[ME]:envy} };
+    await apiSend('/api/games', 'POST', game);
+    toast(name + ' proposé au groupe 🎮');
+  }
+  await loadAll();
+  closeModal(); render();
+}
+
+/* --- Noter les nouveautés --- */
+function openRateNew(){
+  const toRate = GAMES.filter(g => g.ratings?.[ME] == null)
+                      .sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
+  if(!toRate.length){ toast('Tu as déjà tout noté 👏'); return; }
+  openModal(`
+    <h2>Noter les nouveautés</h2>
+    <div class="sub">${toRate.length} jeu${toRate.length>1?'x':''} attend${toRate.length>1?'ent':''} ton avis. Note ceux que tu veux, on sauvegarde tout d\u2019un coup.</div>
+    ${toRate.map(g=>`
+      <div class="rate-item">
+        <div class="rate-head">
+          <span class="game-name">${esc(g.name)}</span>
+          ${(g.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+          ${priceLabel(g.price)}
+          <span class="game-meta">par ${esc((g.proposedBy||[]).join(' & '))}</span>
+          ${g.link?`<a href="${esc(g.link)}" target="_blank" rel="noopener" style="font-size:12px">trailer ↗</a>`:''}
+        </div>
+        ${g.note?`<div class="comment" style="margin:0 0 8px">« ${esc(g.note)} »</div>`:''}
+        ${scorePicker('rate-'+g.id, null)}
+      </div>`).join('')}
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Plus tard</button>
+      <button class="btn primary" onclick="saveNewRatings()">Enregistrer mes notes</button>
+    </div>`);
+}
+async function saveNewRatings(){
+  const m = document.querySelector('.modal');
+  const updates = {};
+  GAMES.forEach(g=>{ const s = getScore(m,'rate-'+g.id); if(s!=null) updates[g.id]=s; });
+  if(!Object.keys(updates).length){ closeModal(); return; }
+  await apiSend('/api/ratings', 'POST', { member: ME, updates });
+  await loadAll();
+  toast(Object.keys(updates).length + ' note(s) enregistrée(s) ⭐');
+  closeModal(); render();
+}
+
+/* --- Modifier mes notes --- */
+function openEditRatings(){
+  const mine = GAMES.filter(g => typeof g.ratings?.[ME] === 'number')
+                    .sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+  if(!mine.length){ toast('Tu n\u2019as encore rien noté'); return; }
+  openModal(`
+    <h2>Modifier mes notes</h2>
+    <div class="sub">Change ce que tu veux, puis enregistre.</div>
+    ${mine.map(g=>`
+      <div class="rate-item">
+        <div class="rate-head"><span class="game-name">${esc(g.name)}</span><span class="game-meta">note actuelle : ${g.ratings[ME]}</span></div>
+        ${scorePicker('rate-'+g.id, g.ratings[ME])}
+      </div>`).join('')}
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="saveNewRatings()">Enregistrer</button>
+    </div>`);
+}
+
+/* --- Noter un seul jeu --- */
+function openRateOne(id){
+  const g = GAMES.find(x=>x.id===id); if(!g) return;
+  openModal(`
+    <h2>${esc(g.name)}</h2>
+    <div class="sub">À quel point tu as envie d\u2019y jouer ?</div>
+    ${scorePicker('rate-'+g.id, g.ratings?.[ME] ?? null)}
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="saveNewRatings()">Enregistrer</button>
+    </div>`);
+}
+
+/* --- Supprimer un jeu --- */
+function openDeleteGame(id){
+  const g = GAMES.find(x=>x.id===id); if(!g) return;
+  const nRatings = Object.keys(g.ratings||{}).length;
+  openModal(`
+    <h2>Supprimer « ${esc(g.name)} » ?</h2>
+    <div class="sub">La suppression est <strong>définitive et pour tout le groupe</strong> : la fiche et ${nRatings?`les ${nRatings} note${nRatings>1?'s':''} associée${nRatings>1?'s':''}`:'ses données'} disparaîtront pour tout le monde. Les aventures déjà lancées sur ce jeu resteront dans l\u2019historique.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" style="background:var(--coral); border-color:var(--coral);" onclick="deleteGame('${g.id}')">Oui, supprimer</button>
+    </div>`);
+}
+async function deleteGame(id){
+  const g = GAMES.find(x=>x.id===id);
+  await apiSend('/api/games/'+id, 'DELETE');
+  await loadAll();
+  toast((g?g.name:'Jeu') + ' supprimé de la liste');
+  closeModal(); render();
+}
+
+/* --- Lancer une aventure --- */
+function openNewArc(){
+  if(!GAMES.length){ toast('Propose d\u2019abord un jeu !'); return; }
+  const sorted = [...GAMES].sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+  const today = new Date().toISOString().slice(0,10);
+  openModal(`
+    <h2>Lancer une aventure</h2>
+    <div class="sub">Annonce au groupe qu\u2019un nouvel arc commence.</div>
+    <div class="field"><label>Nom de l\u2019arc *</label><input type="text" id="a-name" placeholder="Ex : L\u2019expédition du Nether"></div>
+    <div class="field"><label>Jeu *</label><select id="a-game">${sorted.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Qui participe ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
+    <div class="field"><label>Date de début</label><input type="date" id="a-date" value="${today}"></div>
+    <div class="err" id="a-err"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="saveArc()">Lancer 🚀</button>
+    </div>`);
+}
+async function saveArc(){
+  const m = document.querySelector('.modal');
+  const name = document.getElementById('a-name').value.trim();
+  if(!name) return showErr('a-err','Donne un nom à cet arc — c\u2019est plus épique.');
+  const gameId = document.getElementById('a-game').value;
+  const game = GAMES.find(g=>g.id===gameId);
+  const participants = getChips(m,'parts');
+  if(!participants.length) return showErr('a-err','Sélectionne au moins un participant.');
+  const startDate = document.getElementById('a-date').value || new Date().toISOString().slice(0,10);
+  const arc = { id:uid(), name, gameId, gameName:game?.name||'?', participants, startDate, createdBy:ME };
+  await apiSend('/api/arcs', 'POST', arc);
+  await loadAll();
+  toast('Aventure lancée — bon jeu à ' + participants.join(', ') + ' !');
+  closeModal(); render();
+}
+
+init();
+</script>
+</body>
+</html>
