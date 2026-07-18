@@ -139,14 +139,61 @@ function parsePromo(p) {
 
 /* ==================== L'API ==================== */
 
-/* Tout l'état d'un coup : joueurs, jeux, aventures */
+/* Tout l'état d'un coup : joueurs, jeux, aventures, profils */
 app.get('/api/state', async (req, res) => {
   maybeMonthlyReport(); // vérifie si le bilan du mois doit partir (sans bloquer la réponse)
   try {
     const members = (await pool.query(`SELECT value FROM meta WHERE key='members'`)).rows[0]?.value ?? DEFAULT_MEMBERS;
+    const profiles = (await pool.query(`SELECT value FROM meta WHERE key='profiles'`)).rows[0]?.value ?? {};
     const games = (await pool.query(`SELECT data FROM games`)).rows.map(r => r.data);
     const arcs = (await pool.query(`SELECT data FROM arcs`)).rows.map(r => r.data);
-    res.json({ members, games, arcs });
+    res.json({ members, profiles, games, arcs });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Ajouter un nouveau joueur à la guilde : { name } */
+app.post('/api/members', async (req, res) => {
+  try {
+    const name = (req.body?.name || '').trim();
+    if (!isStr(name, 30) || !name) return res.status(400).json({ error: 'invalid' });
+    const row = (await pool.query(`SELECT value FROM meta WHERE key='members'`)).rows[0];
+    const members = row?.value ?? DEFAULT_MEMBERS;
+    if (members.some(m => m.toLowerCase() === name.toLowerCase())) {
+      return res.status(409).json({ error: 'exists' });
+    }
+    members.push(name);
+    await pool.query(
+      `INSERT INTO meta (key, value) VALUES ('members', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
+      [JSON.stringify(members)]
+    );
+    notifyDiscord(`👋 **${name}** rejoint La Guilde ! Souhaitez-lui la bienvenue !`);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Mettre à jour son profil : statut de dispo et/ou avatar
+   { member, status: 'green'|'orange'|'red'|null, avatar: {type:'emoji'|'url', value}|null } */
+app.post('/api/profile', async (req, res) => {
+  try {
+    const { member, status, avatar } = req.body || {};
+    if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
+    const row = (await pool.query(`SELECT value FROM meta WHERE key='profiles'`)).rows[0];
+    const profiles = row?.value ?? {};
+    const p = profiles[member] || {};
+    if (status === null) delete p.status;
+    else if (['green', 'orange', 'red'].includes(status)) p.status = status;
+    if (avatar === null) delete p.avatar;
+    else if (avatar && typeof avatar === 'object' && ['emoji', 'url'].includes(avatar.type) && isStr(avatar.value, 400) && avatar.value) {
+      p.avatar = { type: avatar.type, value: avatar.value };
+    }
+    profiles[member] = p;
+    await pool.query(
+      `INSERT INTO meta (key, value) VALUES ('profiles', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
+      [JSON.stringify(profiles)]
+    );
+    broadcast();
+    res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
@@ -183,7 +230,8 @@ app.post('/api/games', async (req, res) => {
       logPromo(game.promo.by || proposer);
     }
     const genresTxt = game.genres.length ? ' · ' + game.genres.join(', ') : '';
-    notifyDiscord(`🎮 **${proposer}** propose **${game.name}** (${priceTxt}${genresTxt})${envy != null ? ` — envie : ${envy}/10` : ''}`);
+    const linkTxt = game.link ? `\n👉 ${game.link}` : '';
+    notifyDiscord(`🎮 **${proposer}** propose **${game.name}** (${priceTxt}${genresTxt})${envy != null ? ` — envie : ${envy}/10` : ''}${linkTxt}`);
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -235,7 +283,8 @@ app.post('/api/games/:id/promo', async (req, res) => {
       const pct = promoPct(game);
       const deal = pct ? `à **−${pct}%**` : `à **${euro(game.promo.price)}**`;
       const until = game.promo.until ? ` jusqu'au ${ddmm(game.promo.until)}` : '';
-      notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a flairé une bonne affaire 🇮🇱 ! **${game.name}** ${deal}${until} sur ${game.promo.platform}`);
+      const linkTxt = game.link ? `\nAllez jeter un œil 👉 ${game.link}` : '';
+      notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a trouvé une bonne affaire ! **${game.name}** ${deal}${until} sur ${game.promo.platform}${linkTxt}`);
       logPromo(game.promo.by);
     }
     broadcast();
@@ -292,10 +341,50 @@ app.post('/api/arcs', async (req, res) => {
       createdAt: new Date().toISOString(),
       status: 'en cours'
     };
+    // Appel à la campagne : nombre de places visées (optionnel, 2 à 20)
+    const slots = parseInt(b.slots);
+    if (!isNaN(slots) && slots >= 2 && slots <= 20) arc.slots = slots;
     await pool.query(`INSERT INTO arcs (id, data) VALUES ($1, $2)`, [arc.id, JSON.stringify(arc)]);
-    // Notif Discord : "X lance l'aventure « Y » sur Jeu avec A et B ! Bonne chance les nazes !"
     const others = arc.participants.filter(p => p !== arc.createdBy);
-    notifyDiscord(`🚀 **${arc.createdBy}** lance l'aventure « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !`);
+    if (arc.slots && arc.participants.length < arc.slots) {
+      // Grosse notif : on recrute !
+      const left = arc.slots - arc.participants.length;
+      notifyDiscord([
+        '📣 ═══════════════════ 📣',
+        '# ⚔️ APPEL À LA CAMPAGNE ! ⚔️',
+        `🚀 **${arc.createdBy}** recrute pour « **${arc.name}** » sur **${arc.gameName}** !`,
+        `👥 Déjà chauds : ${joinFr(arc.participants)}`,
+        `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — premiers arrivés, premiers servis !`,
+        '👉 Rejoignez l\u2019aventure depuis l\u2019onglet « Aventures » de La Guilde',
+        '📣 ═══════════════════ 📣'
+      ].join('\n'));
+    } else {
+      notifyDiscord(`🚀 **${arc.createdBy}** lance l'aventure « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !`);
+    }
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Rejoindre une aventure ouverte : { member } */
+app.post('/api/arcs/:id/join', async (req, res) => {
+  try {
+    const { member } = req.body || {};
+    if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
+    const { rows } = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not_found' });
+    const arc = rows[0].data;
+    if (arc.status !== 'en cours') return res.status(400).json({ error: 'closed' });
+    if (!(arc.participants || []).includes(member)) {
+      arc.participants = [...(arc.participants || []), member];
+      await pool.query(`UPDATE arcs SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(arc)]);
+      const n = arc.participants.length;
+      if (arc.slots && n >= arc.slots) {
+        notifyDiscord(`🎉 **${member}** rejoint « ${arc.name} » — l'équipe est AU COMPLET (${n}/${arc.slots}) ! GO GO GO !`);
+      } else {
+        notifyDiscord(`➕ **${member}** rejoint l'aventure « ${arc.name} » sur **${arc.gameName}**${arc.slots ? ` (${n}/${arc.slots})` : ''}`);
+      }
+    }
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
