@@ -501,6 +501,68 @@ app.delete('/api/arcs/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
+/* ---------- Proxy Steam ----------
+   Le navigateur ne peut pas interroger Steam directement (blocage CORS) :
+   le serveur fait l'intermédiaire, avec un cache en mémoire pour ne pas
+   marteler Steam (recherche : 10 min, fiche d'un jeu : 1 h). */
+const steamCache = new Map();
+async function steamFetch(url, ttlMs) {
+  const hit = steamCache.get(url);
+  if (hit && Date.now() - hit.t < ttlMs) return hit.v;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: { 'Accept-Language': 'fr' } });
+    if (!r.ok) throw new Error('steam ' + r.status);
+    const v = await r.json();
+    steamCache.set(url, { t: Date.now(), v });
+    if (steamCache.size > 500) steamCache.delete(steamCache.keys().next().value); // on limite la taille
+    return v;
+  } finally { clearTimeout(timer); }
+}
+
+/* Recherche dans le catalogue Steam (prix France) */
+app.get('/api/steam/search', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 80);
+  if (q.length < 3) return res.json({ items: [] });
+  try {
+    const data = await steamFetch(
+      'https://store.steampowered.com/api/storesearch/?cc=fr&l=french&term=' + encodeURIComponent(q),
+      10 * 60 * 1000
+    );
+    const items = (data.items || []).slice(0, 8).map(i => ({
+      id: i.id,
+      name: i.name,
+      price: i.price ? Math.round(i.price.final) / 100 : 0, // Steam donne des centimes
+      img: i.tiny_image || ''
+    }));
+    res.json({ items });
+  } catch (e) { res.status(502).json({ error: 'steam' }); }
+});
+
+/* Fiche résumée d'un jeu Steam (pour l'aperçu au survol) */
+app.get('/api/steam/app/:id', async (req, res) => {
+  const id = String(req.params.id).replace(/\D/g, '').slice(0, 10);
+  if (!id) return res.status(400).json({ error: 'invalid' });
+  try {
+    const data = await steamFetch(
+      'https://store.steampowered.com/api/appdetails?appids=' + id + '&cc=fr&l=french',
+      60 * 60 * 1000
+    );
+    const d = data && data[id];
+    if (!d || !d.success) return res.status(404).json({ error: 'not_found' });
+    const g = d.data;
+    res.json({
+      name: g.name || '',
+      img: g.header_image || '',
+      desc: g.short_description || '',
+      genres: (g.genres || []).map(x => x.description).slice(0, 4),
+      price: g.is_free ? 'Gratuit' : (g.price_overview ? g.price_overview.final_formatted : ''),
+      release: g.release_date?.date || ''
+    });
+  } catch (e) { res.status(502).json({ error: 'steam' }); }
+});
+
 /* ---------- Le bilan mensuel ----------
    Le serveur gratuit dort quand personne ne l'utilise : le bilan part donc
    à la PREMIÈRE visite de l'appli après le 1er du mois, et une seule fois.
