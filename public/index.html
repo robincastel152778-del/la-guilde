@@ -710,12 +710,19 @@ function arcCard(a, canDelete){
   return `<div class="arc ${on?'':'done'}">
     ${canDelete ? `<button class="trash-btn" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
     <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span>${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
-    <div class="arc-game">▸ ${esc(a.gameName)}</div>
+    <div class="arc-game">▸ ${a.multi?'🎮 ':''}${esc(a.gameName)}</div>
+    ${a.goal?`<div class="arc-meta" style="margin-top:4px">🎯 ${esc(a.goal)} — ${a.goalDone?'<span style="color:var(--green)">objectif atteint ✅</span>':'en cours ⏳'}${(a.participants||[]).includes(ME)?` · <a href="#" onclick="setGoal('${a.id}', ${a.goalDone?'false':'true'}); return false;">${a.goalDone?'rouvrir':'marquer atteint !'}</a>`:''}</div>`:''}
     <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
-    <div class="arc-meta">Depuis le ${fmtDate(a.startDate)} · lancée par ${esc(a.createdBy)}
+    <div class="arc-meta">Début le ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}
       ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}</div>
     ${canJoin?`<button class="mini-btn" style="margin-top:8px" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
   </div>`;
+}
+async function setGoal(id, done){
+  await apiSend('/api/arcs/'+id+'/goal', 'POST', { done });
+  await loadAll();
+  toast(done ? 'GG ! Objectif validé 🏆' : 'Objectif rouvert');
+  render();
 }
 async function joinArc(id){
   await apiSend('/api/arcs/'+id+'/join', 'POST', { member: ME });
@@ -990,20 +997,25 @@ async function removePromo(id){
 
 /* --- Lancer une aventure --- */
 function openNewArc(){
-  if(!GAMES.length){ toast('Propose d\u2019abord un jeu !'); return; }
   const sorted = [...GAMES].sort((a,b)=> a.name.localeCompare(b.name,'fr'));
   const today = new Date().toISOString().slice(0,10);
   openModal(`
     <h2>Lancer une aventure</h2>
     <div class="sub">Annonce au groupe qu\u2019un nouvel arc commence.</div>
     <div class="field"><label>Nom de l\u2019arc *</label><input type="text" id="a-name" placeholder="Ex : L\u2019expédition du Nether"></div>
-    <div class="field"><label>Jeu *</label><select id="a-game">${sorted.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Jeu *</label><select id="a-game" onchange="document.getElementById('a-multi-hint').style.display = this.value==='__multi' ? 'block' : 'none'">
+      <option value="__multi">🎮 Multigaming — soirée multi-jeux</option>
+      ${sorted.map(g=>`<option value="${g.id}" ${sorted.length&&g.id===sorted[0].id?'selected':''}>${esc(g.name)}</option>`).join('')}
+    </select>
+    <div id="a-multi-hint" class="game-meta" style="display:none; margin-top:5px">Mode soirée jeux : pas de jeu imposé, la notif Discord annoncera la date et l'heure. Pensez à remplir l'heure juste en dessous !</div></div>
+    <div class="field"><label>🎯 Objectif de la campagne (optionnel)</label><input type="text" id="a-goal" maxlength="200" placeholder="Découvrir le jeu, le finir, monter Gold, battre le boss final…"></div>
     <div class="field"><label>Qui est déjà chaud ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
     <div class="field"><label>📣 Appel à la campagne — places totales visées (optionnel)</label>
       <input type="number" id="a-slots" min="2" max="20" placeholder="Ex : 5 — laisse vide pour une campagne classique">
       <div class="game-meta" style="margin-top:5px">S'il reste des places, une grosse notif Discord partira et les autres pourront rejoindre. La campagne démarre même si l'équipe n'est pas complète.</div>
     </div>
-    <div class="field"><label>Date de début</label><input type="date" id="a-date" value="${today}"></div>
+    <div class="field"><label>Date de début souhaitée</label><input type="date" id="a-date" value="${today}"></div>
+    <div class="field"><label>Heure de début (optionnel)</label><input type="time" id="a-time"></div>
     <div class="err" id="a-err"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Annuler</button>
@@ -1015,14 +1027,17 @@ async function saveArc(){
   const name = document.getElementById('a-name').value.trim();
   if(!name) return showErr('a-err','Donne un nom à cet arc — c\u2019est plus épique.');
   const gameId = document.getElementById('a-game').value;
-  const game = GAMES.find(g=>g.id===gameId);
+  const multi = gameId === '__multi';
+  const game = multi ? null : GAMES.find(g=>g.id===gameId);
   const participants = getChips(m,'parts');
   if(!participants.length) return showErr('a-err','Sélectionne au moins un participant.');
   const startDate = document.getElementById('a-date').value || new Date().toISOString().slice(0,10);
+  const time = document.getElementById('a-time').value || '';
+  const goal = document.getElementById('a-goal').value.trim();
   const slotsRaw = document.getElementById('a-slots').value;
   const slots = slotsRaw === '' ? null : parseInt(slotsRaw);
   if(slots !== null && (isNaN(slots) || slots < 2 || slots > 20)) return showErr('a-err','Le nombre de places doit être entre 2 et 20.');
-  const arc = { id:uid(), name, gameId, gameName:game?.name||'?', participants, startDate, createdBy:ME, slots };
+  const arc = { id:uid(), name, gameId: multi?'':gameId, gameName: multi?'Multigaming':(game?.name||'?'), participants, startDate, createdBy:ME, slots, goal, time, multi };
   await apiSend('/api/arcs', 'POST', arc);
   await loadAll();
   toast('Aventure lancée — bon jeu à ' + participants.join(', ') + ' !');
