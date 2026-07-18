@@ -707,6 +707,7 @@ function arcCard(a, canDelete){
   const canEnd = on && (a.participants||[]).includes(ME);
   const n = (a.participants||[]).length;
   const canJoin = on && a.slots && n < a.slots && !(a.participants||[]).includes(ME);
+  const canLeave = on && (a.participants||[]).includes(ME) && a.startDate > todayStr();
   return `<div class="arc ${on?'':'done'}">
     ${canDelete ? `<button class="trash-btn" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
     <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span>${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
@@ -714,9 +715,19 @@ function arcCard(a, canDelete){
     ${a.goal?`<div class="arc-meta" style="margin-top:4px">🎯 ${esc(a.goal)} — ${a.goalDone?'<span style="color:var(--green)">objectif atteint ✅</span>':'en cours ⏳'}${(a.participants||[]).includes(ME)?` · <a href="#" onclick="setGoal('${a.id}', ${a.goalDone?'false':'true'}); return false;">${a.goalDone?'rouvrir':'marquer atteint !'}</a>`:''}</div>`:''}
     <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
     <div class="arc-meta">Début le ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}
-      ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}</div>
+      ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}
+      ${canLeave?` · <a href="#" style="color:var(--coral)" onclick="leaveArc('${a.id}'); return false;">se retirer</a>`:''}</div>
     ${canJoin?`<button class="mini-btn" style="margin-top:8px" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
   </div>`;
+}
+async function leaveArc(id){
+  const r = await apiSend('/api/arcs/'+id+'/leave', 'POST', { member: ME });
+  await loadAll();
+  if(r.ok) toast('Tu t\u2019es retiré de l\u2019aventure');
+  else if(r.reason==='started') toast('Trop tard, elle a déjà commencé — vois avec le groupe !');
+  else if(r.reason==='not_in') toast('Tu ne fais pas partie de cette aventure');
+  else if(r.reason==='closed') toast('Cette aventure est déjà terminée');
+  render();
 }
 async function setGoal(id, done){
   await apiSend('/api/arcs/'+id+'/goal', 'POST', { done });
@@ -725,9 +736,12 @@ async function setGoal(id, done){
   render();
 }
 async function joinArc(id){
-  await apiSend('/api/arcs/'+id+'/join', 'POST', { member: ME });
+  const r = await apiSend('/api/arcs/'+id+'/join', 'POST', { member: ME });
   await loadAll();
-  toast('Bienvenue dans l\u2019aventure ! 🎉');
+  if(r.ok) toast('Bienvenue dans l\u2019aventure ! 🎉');
+  else if(r.reason==='already') toast('Tu es déjà dans cette aventure 😄');
+  else if(r.reason==='full') toast('Trop tard, c\u2019est complet ! 😢');
+  else if(r.reason==='closed') toast('Cette aventure est déjà terminée');
   render();
 }
 function openDeleteArc(id){
