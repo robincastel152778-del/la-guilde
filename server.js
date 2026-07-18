@@ -235,7 +235,7 @@ app.post('/api/games/:id/promo', async (req, res) => {
       const pct = promoPct(game);
       const deal = pct ? `à **−${pct}%**` : `à **${euro(game.promo.price)}**`;
       const until = game.promo.until ? ` jusqu'au ${ddmm(game.promo.until)}` : '';
-      notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a trouvé une bonne affaire ! **${game.name}** ${deal}${until} sur ${game.promo.platform}`);
+      notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a flairé une bonne affaire 🇮🇱 ! **${game.name}** ${deal}${until} sur ${game.promo.platform}`);
       logPromo(game.promo.by);
     }
     broadcast();
