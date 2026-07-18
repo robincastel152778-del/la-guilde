@@ -86,6 +86,12 @@
   .mini-btn{background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:4px 10px; font-size:12px; cursor:pointer; transition:.15s;}
   .mini-btn:hover{color:var(--text); border-color:var(--accent);}
   .mini-btn.danger:hover{color:var(--coral); border-color:var(--coral);}
+  .game-link{color:inherit; text-decoration:none; border-bottom:1px dashed rgba(139,124,255,.5);}
+  .game-link:hover{color:var(--accent); border-bottom-style:solid;}
+  .old-price{color:var(--muted); text-decoration:line-through; font-size:12px; font-weight:600;}
+  .promo-badge{display:inline-flex; align-items:center; background:rgba(255,107,129,.15); color:var(--coral); border-radius:6px; padding:1px 8px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+  .trash-btn{background:none; border:none; color:var(--muted); cursor:pointer; font-size:15px; padding:2px 7px; border-radius:7px; float:right; line-height:1.2;}
+  .trash-btn:hover{color:var(--coral); background:rgba(255,107,129,.12);}
 
   /* ===== Arc cards ===== */
   .arc{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
@@ -219,10 +225,27 @@ function avgOf(game){
   if(!vals.length) return null;
   return vals.reduce((a,b)=>a+b,0)/vals.length;
 }
-function priceLabel(p){
-  if(p === 0) return '<span class="price">Gratuit</span>';
-  if(p == null || p === '') return '<span class="game-meta">prix ?</span>';
-  return `<span class="price paid">${esc(p)} €</span>`;
+/* ---------- Promos & affichage prix ---------- */
+const todayStr = () => new Date().toISOString().slice(0,10);
+function promoActive(g){ return !!(g.promo && g.promo.price!=null && (!g.promo.until || g.promo.until >= todayStr())); }
+function promoPct(g){
+  if(!promoActive(g) || !(g.price>0)) return null;
+  const pct = Math.round((1 - g.promo.price/g.price)*100);
+  return pct>0 ? pct : null;
+}
+/* Le nom d'un jeu, cliquable vers sa page Steam/trailer si renseignée */
+function gameName(g, stop){
+  const n = esc(g.name);
+  return g.link ? `<a class="game-link" href="${esc(g.link)}" target="_blank" rel="noopener"${stop?' onclick="event.stopPropagation()"':''}>${n}</a>` : n;
+}
+function priceLabel(g){
+  const base = (g.price===0) ? '<span class="price">Gratuit</span>'
+    : (g.price==null || g.price==='') ? '<span class="game-meta">prix ?</span>'
+    : `<span class="price paid">${esc(g.price)} €</span>`;
+  if(!promoActive(g)) return base;
+  const pct = promoPct(g);
+  const old = (g.price>0) ? `<span class="old-price">${esc(g.price)} €</span> ` : '';
+  return `${old}<span class="price paid">${esc(g.promo.price)} €</span> <span class="promo-badge">🏷️ ${pct?`−${pct}%`:'PROMO'} · ${esc(g.promo.platform)}</span>`;
 }
 function toast(msg){
   document.querySelectorAll('.toast').forEach(t=>t.remove());
@@ -305,6 +328,9 @@ function viewPanneau(){
   const rated = GAMES.map(g=>({g, avg:avgOf(g), n:Object.keys(g.ratings||{}).length})).filter(x=>x.avg!=null);
   const top5 = rated.sort((a,b)=> b.avg-a.avg || b.n-a.n).slice(0,5);
   const lastArcs = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const promos = GAMES.filter(promoActive)
+    .sort((a,b)=> (a.promo.until||'9999-99-99').localeCompare(b.promo.until||'9999-99-99'))
+    .slice(0,5);
   return `
     <div class="card">
       <div class="eyebrow">Derniers jeux proposés</div>
@@ -316,14 +342,26 @@ function viewPanneau(){
         ${top5.length ? top5.map((x,i)=>`
           <div class="top-row">
             <span class="rank ${i===0?'r1':''}">${i+1}</span>
-            <span class="top-name">${esc(x.g.name)}<div class="top-count">${x.n} note${x.n>1?'s':''}</div></span>
+            <span class="top-name">${gameName(x.g)}<div class="top-count">${x.n} note${x.n>1?'s':''}</div></span>
             ${gauge(x.avg)}
           </div>`).join('') : '<div class="empty">Personne n\u2019a encore noté de jeu.</div>'}
       </div>
       <div class="card">
         <div class="eyebrow">Dernières aventures lancées</div>
-        ${lastArcs.length ? lastArcs.map(arcCard).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
+        ${lastArcs.length ? lastArcs.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
       </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">🏷️ Promos qui finissent bientôt</div>
+      ${promos.length ? promos.map(g=>`
+        <div class="game-row">
+          <div class="game-head" style="cursor:default">
+            <span class="game-name">${gameName(g)}</span>
+            ${priceLabel(g)}
+            <span style="flex:1"></span>
+            <span class="game-meta">${g.promo.until ? 'se termine le '+fmtDate(g.promo.until) : 'date de fin inconnue'}</span>
+          </div>
+        </div>`).join('') : '<div class="empty">Aucune promo signalée en ce moment. Un jeu bradé quelque part ? Signale-le depuis sa fiche dans le grimoire !</div>'}
     </div>`;
 }
 
@@ -348,8 +386,26 @@ function viewPerso(){
 
     <div class="card">
       <div class="eyebrow">Mes campagnes en cours</div>
-      ${myArcs.length ? myArcs.map(arcCard).join('') : '<div class="empty">Aucune campagne en cours. Lance une aventure pour en démarrer une !</div>'}
+      ${myArcs.length ? myArcs.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune campagne en cours. Lance une aventure pour en démarrer une !</div>'}
     </div>
+
+    ${(() => {
+      const deals = GAMES.filter(g => (g.ratings?.[ME]??-1) >= 7 && promoActive(g))
+        .sort((a,b)=> (a.promo.until||'9999-99-99').localeCompare(b.promo.until||'9999-99-99'));
+      return `<div class="card">
+        <div class="eyebrow">💸 Vous les aimez, ils sont bradés !</div>
+        ${deals.length ? deals.map(g=>`
+          <div class="game-row">
+            <div class="game-head" style="cursor:default">
+              <span class="game-name">${gameName(g)}</span>
+              ${priceLabel(g)}
+              <span style="flex:1"></span>
+              ${gauge(g.ratings[ME])}
+            </div>
+            ${g.promo.until?`<div class="game-meta" style="margin-top:4px">⏳ jusqu\u2019au ${fmtDate(g.promo.until)}</div>`:''}
+          </div>`).join('') : '<div class="empty">Aucun de tes coups de cœur n\u2019est en promo pour le moment. Patience, les soldes arrivent toujours…</div>'}
+      </div>`;
+    })()}
 
     <div class="grid2">
       <div class="card">
@@ -358,7 +414,7 @@ function viewPerso(){
           const partners = MEMBERS.filter(m=> m!==ME && (g.ratings?.[m]??-1) >= 7);
           return `<div class="game-row">
             <div class="game-head" style="cursor:default">
-              <span class="game-name">${esc(g.name)}</span>${gauge(g.ratings[ME])}
+              <span class="game-name">${gameName(g)}</span>${gauge(g.ratings[ME])}
             </div>
             <div style="margin-top:6px; font-size:12.5px; color:var(--muted)">
               ${partners.length ? 'Chauds pour y jouer : ' + partners.map(m=>pchip(m, g.ratings[m])).join('')
@@ -372,7 +428,7 @@ function viewPerso(){
           const fans = MEMBERS.filter(m=> m!==ME && (x.g.ratings?.[m]??-1) >= 7);
           const talkTo = [...new Set([...(x.g.proposedBy||[]), ...fans])].filter(m=>m!==ME);
           return `<div class="game-row">
-            <div class="game-head" style="cursor:default"><span class="game-name">${esc(x.g.name)}</span>${gauge(x.avg)}</div>
+            <div class="game-head" style="cursor:default"><span class="game-name">${gameName(x.g)}</span>${gauge(x.avg)}</div>
             <div style="margin-top:6px; font-size:12.5px; color:var(--muted)">
               En parler avec : ${talkTo.length ? talkTo.map(m=>pchip(m, x.g.ratings?.[m])).join('') : '—'}
             </div>
@@ -422,15 +478,16 @@ function gameRow(g){
   const canEdit = (g.proposedBy||[]).includes(ME);
   return `<div class="game-row" id="row-${g.id}">
     <div class="game-head" onclick="document.getElementById('row-${g.id}').classList.toggle('open')">
-      <span class="game-name">${esc(g.name)}</span>
+      <span class="game-name">${gameName(g, true)}</span>
       ${(g.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
-      ${priceLabel(g.price)}
+      ${priceLabel(g)}
       <span style="flex:1"></span>
       ${avg!=null ? gauge(avg) : '<span class="game-meta">pas encore noté</span>'}
     </div>
     <div class="game-detail">
       <div class="game-meta">Proposé par ${(g.proposedBy||[]).map(p=>pchip(p)).join('')} · ajouté le ${fmtDate(g.addedAt)}
         ${g.link ? ` · <a href="${esc(g.link)}" target="_blank" rel="noopener">voir le trailer / la page</a>` : ''}</div>
+      ${promoActive(g)&&g.promo.until ? `<div class="game-meta" style="margin-top:3px">⏳ Promo jusqu\u2019au ${fmtDate(g.promo.until)}</div>` : ''}
       <div class="detail-grid">
         ${MEMBERS.map(m=>{
           const v = g.ratings?.[m];
@@ -440,6 +497,7 @@ function gameRow(g){
       ${g.note ? `<div class="comment">« ${esc(g.note)} »</div>` : ''}
       <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
         <button class="mini-btn" onclick="openRateOne('${g.id}')">${mine!=null?'Changer ma note ('+mine+')':'Noter ce jeu'}</button>
+        <button class="mini-btn" onclick="openPromo('${g.id}')">${promoActive(g)?'Modifier la promo':'🏷️ Signaler une promo'}</button>
         ${canEdit ? `<button class="mini-btn" onclick="openEditGame('${g.id}')">Modifier la fiche</button>` : ''}
         <button class="mini-btn danger" onclick="openDeleteGame('${g.id}')">Supprimer</button>
       </div>
@@ -452,19 +510,36 @@ function viewAventures(){
   const list = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
   return `<div class="card">
     <div class="eyebrow">Toutes les aventures du groupe</div>
-    ${list.length ? list.map(arcCard).join('') : '<div class="empty">Aucune aventure pour l\u2019instant. Le premier arc s\u2019écrit depuis « Mon espace ».</div>'}
+    ${list.length ? list.map(a=>arcCard(a, a.createdBy===ME)).join('') : '<div class="empty">Aucune aventure pour l\u2019instant. Le premier arc s\u2019écrit depuis « Mon espace ».</div>'}
   </div>`;
 }
-function arcCard(a){
+function arcCard(a, canDelete){
   const on = a.status === 'en cours';
   const canEnd = on && (a.participants||[]).includes(ME);
   return `<div class="arc ${on?'':'done'}">
+    ${canDelete ? `<button class="trash-btn" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
     <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span></div>
     <div class="arc-game">▸ ${esc(a.gameName)}</div>
     <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
     <div class="arc-meta">Depuis le ${fmtDate(a.startDate)} · lancée par ${esc(a.createdBy)}
       ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}</div>
   </div>`;
+}
+function openDeleteArc(id){
+  const a = ARCS.find(x=>x.id===id); if(!a) return;
+  openModal(`
+    <h2>Supprimer « ${esc(a.name)} » ?</h2>
+    <div class="sub">Cette campagne disparaîtra définitivement de l\u2019historique, pour tout le groupe. Si elle est juste finie, préfère « marquer comme terminée ».</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" style="background:var(--coral); border-color:var(--coral);" onclick="deleteArc('${a.id}')">Oui, supprimer</button>
+    </div>`);
+}
+async function deleteArc(id){
+  await apiSend('/api/arcs/'+id, 'DELETE');
+  await loadAll();
+  toast('Campagne supprimée');
+  closeModal(); render();
 }
 async function endArc(id){
   await apiSend('/api/arcs/'+id+'/end', 'POST', {});
@@ -526,6 +601,18 @@ function openGameForm(g){
     ${edit ? '' : `<div class="field"><label>À quel point tu veux y jouer ? *</label>${scorePicker('envy', null)}</div>`}
     <div class="field"><label>Lien trailer / page Steam</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/…"></div>
     <div class="field"><label>Prix (€) — laisse vide si inconnu, 0 si gratuit</label><input type="number" id="f-price" min="0" step="0.01" value="${g?.price ?? ''}"></div>
+    ${edit ? '' : `
+    <div class="field"><label>Actuellement en promo ?</label>
+      <div class="chips">
+        <button type="button" class="chip-opt" id="promo-yes" onclick="togglePromoFields(true)">Oui 🏷️</button>
+        <button type="button" class="chip-opt sel" id="promo-no" onclick="togglePromoFields(false)">Non</button>
+      </div>
+    </div>
+    <div id="promo-fields" style="display:none">
+      <div class="field"><label>Nouveau prix en promo (€) *</label><input type="number" id="f-promo-price" min="0" step="0.01"></div>
+      <div class="field"><label>Sur quelle plateforme ? *</label><input type="text" id="f-promo-platform" placeholder="Steam, Epic, Instant Gaming…"></div>
+      <div class="field"><label>Jusqu\u2019à quand ? (si tu sais)</label><input type="date" id="f-promo-until"></div>
+    </div>`}
     <div class="field"><label>Petit mot (optionnel)</label><textarea id="f-note" placeholder="Pourquoi ce jeu ? Un argument de vente ?">${esc(g?.note||'')}</textarea></div>
     <div class="err" id="f-err"></div>
     <div class="modal-actions">
@@ -541,6 +628,11 @@ function addGenreChip(){
   b.type='button'; b.className='chip-opt sel'; b.dataset.v=v; b.textContent=v;
   b.onclick=()=>b.classList.toggle('sel');
   chips.appendChild(b); inp.value='';
+}
+function togglePromoFields(on){
+  document.getElementById('promo-yes').classList.toggle('sel', on);
+  document.getElementById('promo-no').classList.toggle('sel', !on);
+  document.getElementById('promo-fields').style.display = on ? 'block' : 'none';
 }
 async function saveGame(editId){
   const m = document.querySelector('.modal');
@@ -560,7 +652,14 @@ async function saveGame(editId){
     if(envy==null) return showErr('f-err','Donne ta note d\u2019envie (0 à 10) — c\u2019est tout l\u2019intérêt !');
     const dup = GAMES.find(g=>g.name.toLowerCase()===name.toLowerCase());
     if(dup) return showErr('f-err','« '+dup.name+' » est déjà dans la liste. Note-le plutôt depuis « Tous les jeux ».');
-    const game = { id:uid(), name, genres, link, price, note, proposedBy:[ME], ratings:{[ME]:envy} };
+    let promo = null;
+    if(document.getElementById('promo-yes')?.classList.contains('sel')){
+      const pPrice = document.getElementById('f-promo-price').value;
+      const pPlat = document.getElementById('f-promo-platform').value.trim();
+      if(pPrice==='' || !pPlat) return showErr('f-err','Pour la promo, il faut au moins le nouveau prix et la plateforme.');
+      promo = { price: Math.max(0, parseFloat(pPrice)), platform: pPlat, until: document.getElementById('f-promo-until').value || '' };
+    }
+    const game = { id:uid(), name, genres, link, price, note, proposedBy:[ME], ratings:{[ME]:envy}, promo };
     await apiSend('/api/games', 'POST', game);
     toast(name + ' proposé au groupe 🎮');
   }
@@ -581,7 +680,7 @@ function openRateNew(){
         <div class="rate-head">
           <span class="game-name">${esc(g.name)}</span>
           ${(g.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
-          ${priceLabel(g.price)}
+          ${priceLabel(g)}
           <span class="game-meta">par ${esc((g.proposedBy||[]).join(' & '))}</span>
           ${g.link?`<a href="${esc(g.link)}" target="_blank" rel="noopener" style="font-size:12px">trailer ↗</a>`:''}
         </div>
@@ -653,6 +752,41 @@ async function deleteGame(id){
   await apiSend('/api/games/'+id, 'DELETE');
   await loadAll();
   toast((g?g.name:'Jeu') + ' supprimé de la liste');
+  closeModal(); render();
+}
+
+/* --- Signaler / modifier une promo --- */
+function openPromo(id){
+  const g = GAMES.find(x=>x.id===id); if(!g) return;
+  const p = g.promo || {};
+  const baseTxt = g.price===0 ? 'gratuit' : (g.price!=null ? g.price+' €' : 'inconnu');
+  openModal(`
+    <h2>🏷️ Promo sur ${esc(g.name)}</h2>
+    <div class="sub">Prix normal : ${baseTxt}. Renseigne la promo, tout le groupe la verra sur le panneau général.</div>
+    <div class="field"><label>Nouveau prix en promo (€) *</label><input type="number" id="p-price" min="0" step="0.01" value="${p.price ?? ''}"></div>
+    <div class="field"><label>Sur quelle plateforme ? *</label><input type="text" id="p-platform" value="${esc(p.platform||'')}" placeholder="Steam, Epic, Instant Gaming…"></div>
+    <div class="field"><label>Jusqu\u2019à quand ? (si tu sais)</label><input type="date" id="p-until" value="${esc(p.until||'')}"></div>
+    <div class="err" id="p-err"></div>
+    <div class="modal-actions">
+      ${g.promo ? `<button class="btn" style="margin-right:auto" onclick="removePromo('${g.id}')">Retirer la promo</button>` : ''}
+      <button class="btn" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" onclick="savePromo('${g.id}')">Enregistrer</button>
+    </div>`);
+}
+async function savePromo(id){
+  const price = document.getElementById('p-price').value;
+  const platform = document.getElementById('p-platform').value.trim();
+  if(price==='' || !platform) return showErr('p-err','Il faut au moins le nouveau prix et la plateforme.');
+  const until = document.getElementById('p-until').value || '';
+  await apiSend('/api/games/'+id+'/promo', 'POST', { price: parseFloat(price), platform, until });
+  await loadAll();
+  toast('Promo signalée — le groupe est prévenu 🏷️');
+  closeModal(); render();
+}
+async function removePromo(id){
+  await apiSend('/api/games/'+id+'/promo', 'POST', { remove: true });
+  await loadAll();
+  toast('Promo retirée');
   closeModal(); render();
 }
 
