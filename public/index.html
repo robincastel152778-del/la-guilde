@@ -275,11 +275,40 @@ function memberColor(name){
 }
 /* Image Steam d'une aventure (déduite du lien de la fiche du jeu) */
 function steamAppId(g){ const m = (g?.link||'').match(/store\.steampowered\.com\/app\/(\d+)/); return m ? m[1] : null; }
+/* Boutiques hors Steam dont on sait extraire l'image (Epic, GOG, Instant Gaming) */
+const OG_HOSTS = ['store.epicgames.com','www.gog.com','gog.com','www.instant-gaming.com','instant-gaming.com'];
+const OG_CACHE = {};
+function ogUrl(link){ try{ const u = new URL(link); return (u.protocol==='https:' && OG_HOSTS.includes(u.hostname)) ? u.href : null; }catch(e){ return null; } }
+function arcGame(a){ return GAMES.find(x=>x.id===a.gameId) || GAMES.find(x=>x.name===a.gameName); }
 function arcImage(a){
   if(a.multi) return null;
-  const g = GAMES.find(x=>x.id===a.gameId) || GAMES.find(x=>x.name===a.gameName);
-  const id = g ? steamAppId(g) : null;
-  return id ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg` : null;
+  const g = arcGame(a);
+  if(!g) return null;
+  const id = steamAppId(g);
+  if(id) return `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
+  const o = ogUrl(g.link);
+  return (o && OG_CACHE[o]?.img) || null;
+}
+/* Charge après coup les images Epic/GOG/IG des bandeaux affichés */
+async function hydrateOg(){
+  for(const el of document.querySelectorAll('[data-og]')){
+    const url = el.getAttribute('data-og');
+    el.removeAttribute('data-og');
+    try{
+      let d = OG_CACHE[url];
+      if(!d){
+        const r = await fetch('/api/preview?url=' + encodeURIComponent(url));
+        d = r.ok ? await r.json() : {};
+        OG_CACHE[url] = d;
+      }
+      if(d.img && document.body.contains(el)){
+        const im = document.createElement('img');
+        im.src = d.img; im.alt = ''; im.loading = 'lazy';
+        im.onerror = () => im.remove();
+        el.appendChild(im);
+      }
+    }catch(e){ /* pas d'image, le fond dégradé reste */ }
+  }
 }
 /* Badge d'état : Terminée / Commence dans X jours / En cours */
 function arcStatusBadge(a){
@@ -404,6 +433,7 @@ function render(){
       </nav>
     </header>
     <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='social' ? viewSocial() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
+  setTimeout(hydrateOg, 30);
 }
 function setTab(t){ if(t==='social') SOCIAL_SEL=null; TAB=t; refreshData(true); }
 function switchProfile(){ ME=null; saveProfile(null); render(); }
@@ -792,9 +822,11 @@ function arcCard(a, canDelete){
   const canJoin = on && a.slots && n < a.slots && !(a.participants||[]).includes(ME);
   const canLeave = on && (a.participants||[]).includes(ME) && a.startDate > todayStr();
   const img = arcImage(a);
+  const g2 = a.multi ? null : arcGame(a);
+  const og = (!img && g2) ? ogUrl(g2.link) : null;
   const fallback = a.multi ? '🎮' : esc((a.gameName||'?').charAt(0).toUpperCase());
   return `<div class="arc2 ${on?'':'done'}">
-    <div class="arc2-img"><span class="arc2-fallback">${fallback}</span>${img?`<img src="${img}" alt="" loading="lazy" onerror="this.remove()">`:''}</div>
+    <div class="arc2-img"${og?` data-og="${esc(og)}"`:''}><span class="arc2-fallback">${fallback}</span>${img?`<img src="${img}" alt="" loading="lazy" onerror="this.remove()">`:''}</div>
     <div class="arc2-body">
       ${canDelete ? `<button class="trash-btn" style="position:absolute; top:8px; right:8px; float:none;" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
       <div class="arc2-title">${esc(a.name)} ${arcStatusBadge(a)}${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
@@ -913,7 +945,7 @@ function openGameForm(g){
       </div>
     </div>
     ${edit ? '' : `<div class="field"><label>À quel point tu veux y jouer ? *</label>${scorePicker('envy', null)}</div>`}
-    <div class="field"><label>Lien trailer / page Steam</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/…"></div>
+    <div class="field"><label>Lien Steam, Epic, GOG, Instant Gaming ou trailer</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/… ou https://store.epicgames.com/…"></div>
     <div class="field"><label>Prix (€) — laisse vide si inconnu, 0 si gratuit</label><input type="number" id="f-price" min="0" step="0.01" value="${g?.price ?? ''}"></div>
     ${edit ? '' : `
     <div class="field"><label>Actuellement en promo ?</label>
@@ -1194,9 +1226,10 @@ document.addEventListener('mouseover', e => {
   const a = e.target.closest ? e.target.closest('a.game-link') : null;
   if(!a) return;
   const m = (a.href || '').match(/store\.steampowered\.com\/app\/(\d+)/);
-  if(!m) return;
   clearTimeout(POP_TIMER);
-  POP_TIMER = setTimeout(()=> showSteamPop(m[1], a), 350);
+  if(m){ POP_TIMER = setTimeout(()=> showSteamPop(m[1], a), 350); return; }
+  const o = ogUrl(a.href || '');
+  if(o) POP_TIMER = setTimeout(()=> showOgPop(o, a), 350);
 });
 document.addEventListener('mouseout', e => {
   if(e.target.closest && e.target.closest('a.game-link')){ clearTimeout(POP_TIMER); hideSteamPop(); }
@@ -1231,6 +1264,31 @@ async function showSteamPop(id, anchor){
   }catch(e){ /* aperçu indisponible : le lien reste cliquable */ }
 }
 function hideSteamPop(){ if(POP_EL){ POP_EL.remove(); POP_EL = null; } }
+async function showOgPop(url, anchor){
+  try{
+    let d = OG_CACHE[url];
+    if(!d){
+      const r = await fetch('/api/preview?url=' + encodeURIComponent(url));
+      if(!r.ok) return;
+      d = await r.json();
+      OG_CACHE[url] = d;
+    }
+    if(!d || (!d.img && !d.name)) return;
+    if(!document.body.contains(anchor)) return;
+    hideSteamPop();
+    const rect = anchor.getBoundingClientRect();
+    POP_EL = document.createElement('div');
+    POP_EL.className = 'steam-pop';
+    POP_EL.style.top = Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 270)) + 'px';
+    POP_EL.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 316)) + 'px';
+    POP_EL.innerHTML = `${d.img?`<img src="${esc(d.img)}" alt="">`:''}
+      <div class="sp-body">
+        <div class="sp-name">${esc(d.name || '')}</div>
+        <div class="sp-desc">${esc((d.desc||'').slice(0,180))}${(d.desc||'').length>180?'…':''}</div>
+      </div>`;
+    document.body.appendChild(POP_EL);
+  }catch(e){ /* aperçu indisponible : le lien reste cliquable */ }
+}
 
 init();
 </script>
