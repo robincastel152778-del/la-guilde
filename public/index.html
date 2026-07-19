@@ -133,6 +133,29 @@
   .arc-status{display:inline-block; font-size:11px; font-weight:700; border-radius:6px; padding:1px 8px; margin-left:6px; vertical-align:middle;}
   .arc-status.on{background:rgba(74,222,128,.15); color:var(--green);}
   .arc-status.off{background:rgba(138,144,166,.15); color:var(--muted);}
+  .arc-status.soon{background:rgba(139,124,255,.18); color:var(--accent);}
+
+  /* ===== Bandeaux de campagne v2 ===== */
+  .arc2{display:flex; background:var(--panel2); border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden; position:relative;}
+  .arc2.done{opacity:.55;}
+  .arc2-img{width:160px; align-self:stretch; min-height:112px; flex-shrink:0; position:relative; background:linear-gradient(135deg, var(--accent-soft), var(--panel)); display:flex; align-items:center; justify-content:center;}
+  .arc2-fallback{font-size:36px; opacity:.65;}
+  .arc2-img img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .arc2-body{flex:1; padding:12px 14px 13px; min-width:0;}
+  .arc2-title{font-weight:800; font-size:17.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-right:28px;}
+  .arc2-cols{display:flex; gap:16px; margin-top:9px; flex-wrap:wrap;}
+  .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; max-width:130px; padding-left:7px;}
+  .arc2-people .pdot{width:28px; height:28px; font-size:10.5px; border:2px solid var(--panel2); margin-left:-8px; margin-bottom:3px;}
+  .arc2-people .pemoji{font-size:16px;}
+  .arc2-info{flex:1; min-width:190px;}
+  .arc2-goal{font-size:14.5px; font-weight:650; margin-top:5px;}
+  .btn-join{margin-top:10px; padding:9px 20px; font-size:14.5px;}
+  @media (max-width:560px){ .arc2{flex-direction:column;} .arc2-img{width:100%; height:92px; min-height:0;} }
+
+  .status-select{background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:7px 10px; color:var(--text); font-family:inherit; font-size:13px; max-width:280px;}
+  .status-select:focus{outline:none; border-color:var(--accent);}
+  .col-opt{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0;}
+  .col-opt.sel{border-color:#fff; box-shadow:0 0 0 2px var(--gold);}
 
   /* ===== Top 5 ===== */
   .top-row{display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--border);}
@@ -215,6 +238,7 @@ const STATUS = {
   red:    { c:'#FF6B81', label:'Mes campagnes me prennent déjà beaucoup de temps' }
 };
 const AVATARS = ['🎮','🕹️','👾','🤖','🧙','🧝','🧛','🧟','🥷','🦸','🦹','👑','🐉','🦖','🦕','🐺','🦊','🐻','🐼','🐸','🐢','🐙','🦑','🦉','🦅','🦇','🐍','🦂','🕷️','🦈','🐲','👻','💀','☠️','👽','🛸','🔥','⚡','❄️','🌙','⭐','☄️','🗡️','⚔️','🛡️','🏹','🪄','🧪','💣','🎯'];
+const TAGLINES = ['Rage quit imminent', 'AFK professionnel', '300h de jeu, toujours nul', '« Une dernière et j\u2019arrête »', 'Delu et le sait'];
 
 let ME=null, MEMBERS=[], GAMES=[], ARCS=[], PROFILES={}, TAB='panneau', SOCIAL_SEL=null;
 
@@ -243,9 +267,29 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const fmtDate = iso => { try{ return new Date(iso).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}); }catch(e){ return iso; } };
 function memberColor(name){
+  const custom = (typeof PROFILES === 'object' && PROFILES[name]?.color) || null;
+  if(custom) return custom;
   const i = MEMBERS.indexOf(name);
   const hue = HUES[(i>=0?i:Math.abs(hash(name)))%HUES.length];
   return `hsl(${hue} 75% 65%)`;
+}
+/* Image Steam d'une aventure (déduite du lien de la fiche du jeu) */
+function steamAppId(g){ const m = (g?.link||'').match(/store\.steampowered\.com\/app\/(\d+)/); return m ? m[1] : null; }
+function arcImage(a){
+  if(a.multi) return null;
+  const g = GAMES.find(x=>x.id===a.gameId) || GAMES.find(x=>x.name===a.gameName);
+  const id = g ? steamAppId(g) : null;
+  return id ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg` : null;
+}
+/* Badge d'état : Terminée / Commence dans X jours / En cours */
+function arcStatusBadge(a){
+  if(a.status !== 'en cours') return '<span class="arc-status off">Terminée</span>';
+  const today = todayStr();
+  if(a.startDate > today){
+    const days = Math.max(1, Math.round((new Date(a.startDate) - new Date(today)) / 86400000));
+    return `<span class="arc-status soon">🗓️ Commence ${days === 1 ? 'demain' : 'dans ' + days + ' jours'}</span>`;
+  }
+  return '<span class="arc-status on">En cours</span>';
 }
 function hash(s){ let h=0; for(const c of s) h=(h*31 + c.charCodeAt(0))|0; return h; }
 const initials = n => n.slice(0,2).toUpperCase();
@@ -402,44 +446,42 @@ function pickProfile(name){ ME=name; saveProfile(name); render(); }
 
 /* ---------- Vue : Panneau général ---------- */
 function viewPanneau(){
-  const recent = [...GAMES].sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt)).slice(0,3);
-  const rated = GAMES.map(g=>({g, avg:avgOf(g), n:Object.keys(g.ratings||{}).length})).filter(x=>x.avg!=null);
-  const top5 = rated.sort((a,b)=> b.avg-a.avg || b.n-a.n).slice(0,5);
+  const recent = [...GAMES].sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt)).slice(0,5);
   const lastArcs = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
   const promos = GAMES.filter(promoActive)
     .sort((a,b)=> (a.promo.until||'9999-99-99').localeCompare(b.promo.until||'9999-99-99'))
     .slice(0,5);
   return `
     <div class="card">
-      <div class="eyebrow">Derniers jeux proposés</div>
-      ${recent.length ? recent.map(gameRow).join('') : '<div class="empty">Aucun jeu pour l\u2019instant — sois le premier à en proposer un depuis ton espace.</div>'}
-    </div>
-    <div class="grid2">
-      <div class="card">
-        <div class="eyebrow">Top 5 du groupe</div>
-        ${top5.length ? top5.map((x,i)=>`
-          <div class="top-row">
-            <span class="rank ${i===0?'r1':''}">${i+1}</span>
-            <span class="top-name">${gameName(x.g)}<div class="top-count">${x.n} note${x.n>1?'s':''}</div></span>
-            ${gauge(x.avg)}
-          </div>`).join('') : '<div class="empty">Personne n\u2019a encore noté de jeu.</div>'}
-      </div>
-      <div class="card">
-        <div class="eyebrow">Dernières aventures lancées</div>
-        ${lastArcs.length ? lastArcs.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
-      </div>
-    </div>
-    <div class="card">
-      <div class="eyebrow">🏷️ Promos qui finissent bientôt</div>
-      ${promos.length ? promos.map(g=>`
+      <div class="eyebrow">Les 5 derniers jeux proposés</div>
+      ${recent.length ? recent.map(g=>`
         <div class="game-row">
           <div class="game-head" style="cursor:default">
             <span class="game-name">${gameName(g)}</span>
             ${priceLabel(g)}
+            <span class="game-meta">proposé par</span>${(g.proposedBy||[]).map(p=>pchip(p)).join('')}
             <span style="flex:1"></span>
-            <span class="game-meta">${g.promo.until ? 'se termine le '+fmtDate(g.promo.until) : 'date de fin inconnue'}</span>
+            ${avgOf(g)!=null ? gauge(avgOf(g)) : '<span class="game-meta">pas encore noté</span>'}
           </div>
-        </div>`).join('') : '<div class="empty">Aucune promo signalée en ce moment. Un jeu bradé quelque part ? Signale-le depuis sa fiche dans le grimoire !</div>'}
+        </div>`).join('') : '<div class="empty">Aucun jeu pour l\u2019instant — sois le premier à en proposer un depuis ton espace.</div>'}
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="eyebrow">Dernières campagnes lancées</div>
+        ${lastArcs.length ? lastArcs.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
+      </div>
+      <div class="card">
+        <div class="eyebrow">🏷️ Promos en cours à ne pas rater</div>
+        ${promos.length ? promos.map(g=>`
+          <div class="game-row">
+            <div class="game-head" style="cursor:default">
+              <span class="game-name">${gameName(g)}</span>
+              ${priceLabel(g)}
+              <span style="flex:1"></span>
+              <span class="game-meta">${g.promo.until ? 'fin le '+fmtDate(g.promo.until) : 'fin inconnue'}</span>
+            </div>
+          </div>`).join('') : '<div class="empty">Aucune promo signalée en ce moment. Un jeu bradé quelque part ? Signale-le depuis sa fiche !</div>'}
+      </div>
     </div>`;
 }
 
@@ -455,18 +497,22 @@ function viewPerso(){
     .sort((a,b)=>b.avg-a.avg).slice(0,4);
 
   return `
-    <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <div class="card" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
       ${pdotHtml(ME, true)}
-      <div style="flex:1; min-width:230px">
-        <div class="eyebrow" style="margin-bottom:8px">Mon statut du moment</div>
-        <div class="chips">
-          ${Object.entries(STATUS).map(([k,s])=>`
-            <button type="button" class="chip-opt status-btn ${getProf(ME).status===k?'sel':''}" onclick="setStatus('${k}')">
-              <span class="sdot" style="background:${s.c}"></span>${esc(s.label)}
-            </button>`).join('')}
-        </div>
+      <div>
+        <div style="font-weight:800; font-size:16px;">${esc(ME)} ${statusDot(ME)}</div>
+        ${getProf(ME).tagline?`<div class="game-meta" style="font-style:italic">${esc(getProf(ME).tagline)}</div>`:''}
       </div>
-      <button class="mini-btn" onclick="openAvatar()">🖼️ Changer d'avatar</button>
+      <select class="status-select" onchange="setStatus(this.value)">
+        <option value="" disabled ${!getProf(ME).status?'selected':''}>Mon statut du moment…</option>
+        ${Object.entries(STATUS).map(([k,s])=>`<option value="${k}" ${getProf(ME).status===k?'selected':''}>${esc(s.label)}</option>`).join('')}
+      </select>
+      <select class="status-select" onchange="setTagline(this.value)">
+        <option value="" ${!getProf(ME).tagline?'selected':''}>Ma punchline… (aucune)</option>
+        ${TAGLINES.map(t=>`<option value="${esc(t)}" ${getProf(ME).tagline===t?'selected':''}>${esc(t)}</option>`).join('')}
+      </select>
+      <span style="flex:1"></span>
+      <button class="mini-btn" onclick="openAvatar()">🖼️ Avatar & couleur</button>
     </div>
 
     <div class="actions">
@@ -533,7 +579,7 @@ function viewPerso(){
 function viewSocial(){
   if(SOCIAL_SEL && MEMBERS.includes(SOCIAL_SEL)) return viewMemberProfile(SOCIAL_SEL);
   return `<div class="card">
-    <div class="eyebrow">Le crew — clique sur un profil pour le visiter</div>
+    <div class="eyebrow">Les joueurs — clique sur un profil pour le visiter</div>
     <div class="social-grid">
       ${MEMBERS.map(m=>{
         const proposed = GAMES.filter(g=>(g.proposedBy||[]).includes(m)).length;
@@ -544,6 +590,7 @@ function viewSocial(){
         return `<button class="social-card" onclick="openMemberProfile('${esc(m)}')">
           ${pdotHtml(m, true)}
           <div class="social-name">${esc(m)}${statusDot(m)}</div>
+          ${getProf(m).tagline?`<div class="social-status" style="font-style:italic; color:var(--gold)">${esc(getProf(m).tagline)}</div>`:''}
           ${st?`<div class="social-status">${esc(STATUS[st].label)}</div>`:'<div class="social-status">statut non renseigné</div>'}
           <div class="social-stats">${proposed} jeu${proposed>1?'x':''} proposé${proposed>1?'s':''} · ${notes.length} noté${notes.length>1?'s':''}${avg!=null?`<br>${fmt1(avg)}/10 de moyenne`:''}<br>${camps} campagne${camps>1?'s':''} en cours</div>
         </button>`;
@@ -561,11 +608,12 @@ function viewMemberProfile(m){
   const proposed = GAMES.filter(g=>(g.proposedBy||[]).includes(m))
     .sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
   return `
-    <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour au crew</button>
+    <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour</button>
     <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       ${pdotHtml(m, true)}
       <div>
         <div style="font-weight:800; font-size:18px;">${esc(m)} ${statusDot(m)}</div>
+        ${getProf(m).tagline?`<div class="game-meta" style="font-style:italic; color:var(--gold)">${esc(getProf(m).tagline)}</div>`:''}
         <div class="game-meta">${st ? esc(STATUS[st].label) : 'Statut non renseigné'}</div>
       </div>
     </div>
@@ -598,45 +646,67 @@ function viewMemberProfile(m){
 
 /* ---------- Statut & avatar ---------- */
 async function setStatus(s){
+  if(!s) return;
   await apiSend('/api/profile', 'POST', { member: ME, status: s });
   await loadAll();
   toast('Statut mis à jour');
   render();
 }
+async function setTagline(t){
+  await apiSend('/api/profile', 'POST', { member: ME, tagline: t || null });
+  await loadAll();
+  toast(t ? 'Punchline équipée 😎' : 'Punchline retirée');
+  render();
+}
+const COLORS = ['#8B7CFF','#FFC857','#4ADE80','#FF6B81','#5EC8F2','#FF9D5C','#B78CFF','#7CE7C4','#F97BC1','#C3E24A','#FFD93D','#6BE0FF'];
 function openAvatar(){
   const cur = getProf(ME).avatar;
+  const curCol = getProf(ME).color || '';
   openModal(`
-    <h2>Choisis ton avatar</h2>
+    <h2>Avatar & couleur</h2>
     <div class="sub">Un emoji dans la galerie, ou colle l'URL d'une image de ton choix (clic droit sur une image du web → « Copier l'adresse de l'image »).</div>
     <div class="avatar-grid">
       ${AVATARS.map(a=>`<button type="button" class="avatar-opt ${cur?.type==='emoji'&&cur.value===a?'sel':''}" data-a="${a}" onclick="pickAvatar(this)">${a}</button>`).join('')}
     </div>
     <div class="field" style="margin-top:14px"><label>Ou l'URL d'une image (elle sera prioritaire)</label>
       <input type="url" id="av-url" value="${cur?.type==='url'?esc(cur.value):''}" placeholder="https://…"></div>
+    <div class="field"><label>Ta couleur (fond d'avatar et pastilles)</label>
+      <div class="chips">
+        ${COLORS.map(c=>`<button type="button" class="col-opt ${curCol===c?'sel':''}" data-c="${c}" style="background:${c}" title="${c}" onclick="pickColor(this)"></button>`).join('')}
+      </div>
+    </div>
     <div class="err" id="av-err"></div>
     <div class="modal-actions">
-      ${cur?`<button class="btn" style="margin-right:auto" onclick="saveAvatar(null)">Revenir aux initiales</button>`:''}
+      ${(cur||curCol)?`<button class="btn" style="margin-right:auto" onclick="saveAvatar(null)">Tout réinitialiser</button>`:''}
       <button class="btn" onclick="closeModal()">Annuler</button>
       <button class="btn primary" onclick="saveAvatar()">Enregistrer</button>
     </div>`);
+}
+function pickColor(btn){
+  btn.parentElement.querySelectorAll('.col-opt').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
 }
 function pickAvatar(btn){
   btn.parentElement.querySelectorAll('.avatar-opt').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
 }
 async function saveAvatar(reset){
-  let avatar;
-  if(reset === null){ avatar = null; }
-  else {
+  const body = { member: ME };
+  if(reset === null){
+    body.avatar = null; body.color = null;
+  } else {
     const url = document.getElementById('av-url').value.trim();
     const sel = document.querySelector('.avatar-opt.sel');
-    if(url) avatar = { type:'url', value:url };
-    else if(sel) avatar = { type:'emoji', value: sel.dataset.a };
-    else return showErr('av-err','Choisis un emoji ou colle une URL d\u2019image.');
+    const col = document.querySelector('.col-opt.sel');
+    if(url) body.avatar = { type:'url', value:url };
+    else if(sel) body.avatar = { type:'emoji', value: sel.dataset.a };
+    if(col) body.color = col.dataset.c;
+    if(body.avatar === undefined && body.color === undefined)
+      return showErr('av-err','Choisis au moins un avatar ou une couleur.');
   }
-  await apiSend('/api/profile', 'POST', { member: ME, avatar });
+  await apiSend('/api/profile', 'POST', body);
   await loadAll();
-  toast('Avatar mis à jour ✨');
+  toast('Profil mis à jour ✨');
   closeModal(); render();
 }
 
@@ -721,16 +791,25 @@ function arcCard(a, canDelete){
   const n = (a.participants||[]).length;
   const canJoin = on && a.slots && n < a.slots && !(a.participants||[]).includes(ME);
   const canLeave = on && (a.participants||[]).includes(ME) && a.startDate > todayStr();
-  return `<div class="arc ${on?'':'done'}">
-    ${canDelete ? `<button class="trash-btn" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
-    <div><span class="arc-name">${esc(a.name)}</span><span class="arc-status ${on?'on':'off'}">${on?'En cours':'Terminée'}</span>${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
-    <div class="arc-game">▸ ${a.multi?'🎮 ':''}${esc(a.gameName)}</div>
-    ${a.goal?`<div class="arc-meta" style="margin-top:4px">🎯 ${esc(a.goal)} — ${a.goalDone?'<span style="color:var(--green)">objectif atteint ✅</span>':'en cours ⏳'}${(a.participants||[]).includes(ME)?` · <a href="#" onclick="setGoal('${a.id}', ${a.goalDone?'false':'true'}); return false;">${a.goalDone?'rouvrir':'marquer atteint !'}</a>`:''}</div>`:''}
-    <div style="margin-top:5px">${(a.participants||[]).map(p=>pchip(p)).join('')}</div>
-    <div class="arc-meta">Début le ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}
-      ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">marquer comme terminée</a>`:''}
-      ${canLeave?` · <a href="#" style="color:var(--coral)" onclick="leaveArc('${a.id}'); return false;">se retirer</a>`:''}</div>
-    ${canJoin?`<button class="mini-btn" style="margin-top:8px" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
+  const img = arcImage(a);
+  const fallback = a.multi ? '🎮' : esc((a.gameName||'?').charAt(0).toUpperCase());
+  return `<div class="arc2 ${on?'':'done'}">
+    <div class="arc2-img"><span class="arc2-fallback">${fallback}</span>${img?`<img src="${img}" alt="" loading="lazy" onerror="this.remove()">`:''}</div>
+    <div class="arc2-body">
+      ${canDelete ? `<button class="trash-btn" style="position:absolute; top:8px; right:8px; float:none;" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
+      <div class="arc2-title">${esc(a.name)} ${arcStatusBadge(a)}${a.slots?`<span class="arc-status ${n>=a.slots?'off':'on'}" title="Places">${n}/${a.slots} 👥</span>`:''}</div>
+      <div class="arc2-cols">
+        <div class="arc2-people">${(a.participants||[]).map(p=>`<span title="${esc(p)}">${pdotHtml(p)}</span>`).join('')}</div>
+        <div class="arc2-info">
+          <div class="arc-game">▸ ${a.multi?'🎮 ':''}${esc(a.gameName)}</div>
+          ${a.goal?`<div class="arc2-goal">🎯 ${esc(a.goal)} ${a.goalDone?'<span style="color:var(--green)">✅ atteint</span>':''}${(a.participants||[]).includes(ME)?` <a class="game-meta" href="#" onclick="setGoal('${a.id}', ${a.goalDone?'false':'true'}); return false;">${a.goalDone?'(rouvrir)':'(marquer atteint !)'}</a>`:''}</div>`:''}
+          <div class="arc-meta" style="margin-top:5px">📅 ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}
+            ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">terminer</a>`:''}
+            ${canLeave?` · <a href="#" style="color:var(--coral)" onclick="leaveArc('${a.id}'); return false;">se retirer</a>`:''}</div>
+          ${canJoin?`<button class="btn primary btn-join" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
+        </div>
+      </div>
+    </div>
   </div>`;
 }
 async function leaveArc(id){
