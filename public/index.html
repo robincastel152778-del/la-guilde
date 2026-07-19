@@ -290,6 +290,13 @@ function steamAppId(g){ const m = (g?.link||'').match(/store\.steampowered\.com\
 const OG_HOSTS = ['store.epicgames.com','www.gog.com','gog.com','www.instant-gaming.com','instant-gaming.com'];
 const OG_CACHE = {};
 function ogUrl(link){ try{ const u = new URL(link); return (u.protocol==='https:' && OG_HOSTS.includes(u.hostname)) ? u.href : null; }catch(e){ return null; } }
+/* Un lien dont on sait extraire l'image automatiquement (Steam ou boutique OG) */
+function isAutoImageLink(link){ return /store\.steampowered\.com\/app\/\d+/.test(link||'') || !!ogUrl(link||''); }
+function updateImgField(){
+  const link = document.getElementById('f-link')?.value.trim() || '';
+  const f = document.getElementById('f-img-field');
+  if(f) f.style.display = isAutoImageLink(link) ? 'none' : 'block';
+}
 function arcGame(a){ return GAMES.find(x=>x.id===a.gameId) || GAMES.find(x=>x.name===a.gameName); }
 function arcImage(a){
   if(a.multi) return null;
@@ -298,7 +305,8 @@ function arcImage(a){
   const id = steamAppId(g);
   if(id) return `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
   const o = ogUrl(g.link);
-  return (o && OG_CACHE[o]?.img) || null;
+  if(o) return OG_CACHE[o]?.img || null; // chargée après coup par hydrateOg
+  return g.img || null; // image renseignée à la main pour les jeux hors boutiques
 }
 /* Charge après coup les images Epic/GOG/IG des bandeaux affichés */
 async function hydrateOg(){
@@ -957,7 +965,12 @@ function openGameForm(g){
       </div>
     </div>
     ${edit ? '' : `<div class="field"><label>À quel point tu veux y jouer ? *</label>${scorePicker('envy', null)}</div>`}
-    <div class="field"><label>Lien Steam, Epic, GOG, Instant Gaming ou trailer</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/… ou https://store.epicgames.com/…"></div>
+    <div class="field"><label>Lien Steam, Epic, GOG, Instant Gaming ou trailer</label><input type="url" id="f-link" value="${esc(g?.link||'')}" placeholder="https://store.steampowered.com/… ou https://store.epicgames.com/…" oninput="updateImgField()"></div>
+    <div class="field" id="f-img-field" style="display:${isAutoImageLink(g?.link||'')?'none':'block'}">
+      <label>Image du jeu (URL) — pour les jeux hors Steam/Epic</label>
+      <input type="url" id="f-img" value="${esc(g?.img||'')}" placeholder="https://…image.jpg">
+      <div class="game-meta" style="margin-top:4px">Clic droit sur une image du web → « Copier l\u2019adresse de l\u2019image ». Elle habillera les bandeaux de campagne.</div>
+    </div>
     <div class="field"><label>Prix (€) — laisse vide si inconnu, 0 si gratuit</label><input type="number" id="f-price" min="0" step="0.01" value="${g?.price ?? ''}"></div>
     ${edit ? '' : `
     <div class="field"><label>Actuellement en promo ?</label>
@@ -1001,9 +1014,14 @@ async function saveGame(editId){
   const priceRaw = document.getElementById('f-price').value;
   const price = priceRaw === '' ? null : Math.max(0, parseFloat(priceRaw));
   const note = document.getElementById('f-note').value.trim();
+  let img = '';
+  if(!isAutoImageLink(link)){
+    img = (document.getElementById('f-img')?.value || '').trim();
+    if(img && !/^https:\/\//.test(img)) return showErr('f-err','L\u2019URL de l\u2019image doit commencer par https://');
+  }
 
   if(editId){
-    await apiSend('/api/games/'+editId, 'PUT', {name, genres, link, price, note});
+    await apiSend('/api/games/'+editId, 'PUT', {name, genres, link, price, note, img});
     toast('Fiche mise à jour');
   } else {
     const envy = getScore(m,'envy');
@@ -1017,7 +1035,7 @@ async function saveGame(editId){
       if(pPrice==='' || !pPlat) return showErr('f-err','Pour la promo, il faut au moins le nouveau prix et la plateforme.');
       promo = { price: Math.max(0, parseFloat(pPrice)), platform: pPlat, until: document.getElementById('f-promo-until').value || '', by: ME };
     }
-    const game = { id:uid(), name, genres, link, price, note, proposedBy:[ME], ratings:{[ME]:envy}, promo };
+    const game = { id:uid(), name, genres, link, price, note, img, proposedBy:[ME], ratings:{[ME]:envy}, promo };
     await apiSend('/api/games', 'POST', game);
     toast(name + ' proposé au groupe 🎮');
   }
