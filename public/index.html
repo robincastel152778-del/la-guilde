@@ -155,9 +155,9 @@
   .arc2-body{flex:1; padding:12px 14px 13px; min-width:0;}
   .arc2-title{font-weight:800; font-size:17.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-right:28px;}
   .arc2-cols{display:flex; gap:16px; margin-top:9px; flex-wrap:wrap;}
-  .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; max-width:150px; padding-left:9px;}
-  .arc2-people .pdot{width:36px; height:36px; font-size:13px; border:2px solid var(--panel2); margin-left:-10px; margin-bottom:3px;}
-  .arc2-people .pemoji{font-size:20px;}
+  .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; max-width:240px; padding-left:20px;}
+  .arc2-people .pdot{width:60px; height:60px; font-size:20px; border:2px solid var(--panel2); margin-left:-20px; margin-bottom:4px;}
+  .arc2-people .pemoji{font-size:40px;}
   .arc2-info{flex:1; min-width:190px;}
   .arc2-goal{font-size:14.5px; font-weight:650; margin-top:5px;}
   .btn-join{margin-top:10px; padding:9px 20px; font-size:14.5px;}
@@ -336,13 +336,13 @@ const initials = n => n.slice(0,2).toUpperCase();
 
 /* ---------- Avatars & statuts ---------- */
 const getProf = name => PROFILES[name] || {};
-function pdotHtml(name, size){
+function pdotHtml(name, size, zoom){
   const p = getProf(name);
   let inner = esc(initials(name));
   if(p.avatar?.type === 'emoji') inner = `<span class="pemoji">${esc(p.avatar.value)}</span>`;
   else if(p.avatar?.type === 'url') inner = `<img class="avatar-img" src="${esc(p.avatar.value)}" alt="${esc(initials(name))}" onerror="this.remove()">`;
   const cls = size === 'xl' ? 'xl' : size === 'md' ? 'md' : size ? 'big' : '';
-  return `<span class="pdot ${cls}" data-member="${esc(name)}" style="background:${memberColor(name)}">${inner}</span>`;
+  return `<span class="pdot ${cls}" data-member="${esc(name)}"${zoom?' data-zoom="1" style="cursor:zoom-in; background:'+memberColor(name)+'"':' style="background:'+memberColor(name)+'"'}>${inner}</span>`;
 }
 function statusDot(name){
   const st = getProf(name).status;
@@ -432,7 +432,7 @@ function render(){
       <div class="head-inner">
         <div class="logo">LA <span>GUILDE</span></div>
         <div class="head-spacer"></div>
-        <span class="profile-chip">${pdotHtml(ME, 'md')}${esc(ME)}${statusDot(ME)}</span>
+        <span class="profile-chip">${pdotHtml(ME, 'md', true)}${esc(ME)}${statusDot(ME)}</span>
         <button class="head-btn" onclick="switchProfile()">Changer</button>
         <button class="head-btn" onclick="refreshData()" title="Recharger les données">⟳ Actualiser</button>
       </div>
@@ -540,7 +540,7 @@ function viewPerso(){
 
   return `
     <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      ${pdotHtml(ME, 'xl')}
+      ${pdotHtml(ME, 'xl', true)}
       <div>
         <div style="font-weight:800; font-size:16px;">${esc(ME)} ${statusDot(ME)}</div>
         ${getProf(ME).tagline?`<div class="game-meta" style="font-style:italic">${esc(getProf(ME).tagline)}</div>`:''}
@@ -652,7 +652,7 @@ function viewMemberProfile(m){
   return `
     <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour</button>
     <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      ${pdotHtml(m, 'xl')}
+      ${pdotHtml(m, 'xl', true)}
       <div>
         <div style="font-weight:800; font-size:18px;">${esc(m)} ${statusDot(m)}</div>
         ${getProf(m).tagline?`<div class="game-meta" style="font-style:italic; color:var(--gold)">${esc(getProf(m).tagline)}</div>`:''}
@@ -1280,13 +1280,13 @@ function hideSteamPop(){ if(POP_EL){ POP_EL.remove(); POP_EL = null; } }
 /* ---------- Avatar en grand au survol des pastilles de profil ---------- */
 let AV_EL = null, AV_TIMER = null;
 document.addEventListener('mouseover', e => {
-  const d = e.target.closest ? e.target.closest('.pdot[data-member]') : null;
+  const d = e.target.closest ? e.target.closest('.pdot[data-zoom]') : null;
   if(!d) return;
   clearTimeout(AV_TIMER);
-  AV_TIMER = setTimeout(()=> showAvatarPop(d.getAttribute('data-member'), d), 300);
+  AV_TIMER = setTimeout(()=> showAvatarPop(d.getAttribute('data-member'), d), 250);
 });
 document.addEventListener('mouseout', e => {
-  if(e.target.closest && e.target.closest('.pdot[data-member]')){ clearTimeout(AV_TIMER); hideAvatarPop(); }
+  if(e.target.closest && e.target.closest('.pdot[data-zoom]')){ clearTimeout(AV_TIMER); hideAvatarPop(); }
 });
 function showAvatarPop(name, anchor){
   if(!name || !document.body.contains(anchor)) return;
