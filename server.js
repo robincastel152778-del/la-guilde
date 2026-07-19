@@ -569,14 +569,48 @@ app.get('/api/steam/app/:id', async (req, res) => {
 });
 
 /* Aperçu d'une page de boutique HORS Steam (Epic, GOG, Instant Gaming…)
-   On lit les balises Open Graph de la page (image, titre, description),
-   celles-là mêmes qui servent aux aperçus Discord. Liste blanche de
-   domaines : le serveur ne peut pas être détourné pour visiter autre chose. */
+   Stratégie : pour Epic, on interroge leur API de contenu (bien plus fiable
+   que la page web, qui bloque les robots) ; pour le reste, on lit les
+   balises Open Graph de la page. Liste blanche de domaines : le serveur
+   ne peut pas être détourné pour visiter autre chose. */
 const PREVIEW_HOSTS = ['store.epicgames.com', 'www.gog.com', 'gog.com', 'www.instant-gaming.com', 'instant-gaming.com'];
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'fr-FR,fr;q=0.9'
+};
+async function fetchText(url, ms = 7000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: BROWSER_HEADERS });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } finally { clearTimeout(t); }
+}
 function ogTag(html, prop) {
   const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']og:${prop}["'][^>]*content=["']([^"']+)["']`, 'i'))
         || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']og:${prop}["']`, 'i'));
   return m ? m[1].replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, '\u2019').replace(/&quot;/g, '"') : '';
+}
+/* Epic : API de contenu, à partir du slug de l'URL (…/p/le-slug) */
+async function epicPreview(u) {
+  const m = u.pathname.match(/\/p\/([^\/?#]+)/);
+  if (!m) return null;
+  const slug = m[1];
+  for (const loc of ['fr', 'en-US']) {
+    try {
+      const txt = await fetchText(`https://store-content.ak.epicgames.com/api/${loc}/content/products/${slug}`);
+      const json = JSON.parse(txt);
+      const name = json.productName || json._title || slug.replace(/-/g, ' ');
+      // On récupère toutes les images du JSON et on privilégie les bannières larges
+      const urls = [...txt.matchAll(/https:\/\/[^"\s\\]+?\.(?:jpe?g|png|webp)[^"\s\\]*/g)].map(x => x[0]);
+      const img = urls.find(x => /wide|landscape/i.test(x)) || urls.find(x => /1920|2560|hero/i.test(x)) || urls[0] || '';
+      const dm = txt.match(/"(?:description|shortDescription)"\s*:\s*"([^"]{20,300})"/);
+      return { img, name, desc: dm ? dm[1] : '' };
+    } catch (e) { /* on tente la locale suivante */ }
+  }
+  return null;
 }
 app.get('/api/preview', async (req, res) => {
   try {
@@ -585,23 +619,22 @@ app.get('/api/preview', async (req, res) => {
     const key = 'og:' + u.href;
     const hit = steamCache.get(key);
     if (hit && Date.now() - hit.t < 6 * 60 * 60 * 1000) return res.json(hit.v);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 7000);
-    try {
-      const r = await fetch(u.href, {
-        signal: ctrl.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-          'Accept-Language': 'fr'
-        }
-      });
-      if (!r.ok) throw new Error('page ' + r.status);
-      const html = (await r.text()).slice(0, 400000); // on ne lit que le début, les balises og y sont
-      const v = { img: ogTag(html, 'image'), name: ogTag(html, 'title'), desc: ogTag(html, 'description') };
-      steamCache.set(key, { t: Date.now(), v });
-      res.json(v);
-    } finally { clearTimeout(timer); }
-  } catch (e) { res.status(502).json({ error: 'preview' }); }
+    let v = null;
+    if (u.hostname === 'store.epicgames.com') v = await epicPreview(u);
+    if (!v || !v.img) {
+      try {
+        const html = (await fetchText(u.href)).slice(0, 400000);
+        const og = { img: ogTag(html, 'image'), name: ogTag(html, 'title'), desc: ogTag(html, 'description') };
+        v = (v && v.name) ? { ...og, ...v, img: v.img || og.img } : og;
+      } catch (e) { if (!v) throw e; }
+    }
+    if (!v || (!v.img && !v.name)) throw new Error('aucune donnée exploitable');
+    steamCache.set(key, { t: Date.now(), v });
+    res.json(v);
+  } catch (e) {
+    console.error('Aperçu boutique KO :', req.query.url, '→', e.message);
+    res.status(502).json({ error: 'preview', detail: e.message });
+  }
 });
 
 /* ---------- Le bilan mensuel ----------
