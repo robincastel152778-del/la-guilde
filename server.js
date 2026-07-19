@@ -214,6 +214,7 @@ app.post('/api/games', async (req, res) => {
       price: (b.price === null || b.price === undefined) ? null : Math.max(0, Number(b.price) || 0),
       note: isStr(b.note, 1000) ? b.note : '',
       proposedBy: Array.isArray(b.proposedBy) ? b.proposedBy.filter(p => isStr(p, 40)) : [],
+      img: (isStr(b.img, 500) && /^https:\/\//.test(b.img)) ? b.img : '',
       addedAt: new Date().toISOString(),
       ratings: {}
     };
@@ -252,6 +253,7 @@ app.put('/api/games/:id', async (req, res) => {
     if (isStr(b.name, 120) && b.name.trim()) game.name = b.name.trim();
     if (Array.isArray(b.genres)) game.genres = b.genres.filter(g => isStr(g, 40)).slice(0, 12);
     if (isStr(b.link, 500)) game.link = b.link;
+    if (b.img !== undefined) game.img = (isStr(b.img, 500) && /^https:\/\//.test(b.img)) ? b.img : '';
     game.price = (b.price === null || b.price === undefined) ? null : Math.max(0, Number(b.price) || 0);
     if (isStr(b.note, 1000)) game.note = b.note;
     await pool.query(`UPDATE games SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(game)]);
@@ -603,9 +605,13 @@ async function epicPreview(u) {
       const txt = await fetchText(`https://store-content.ak.epicgames.com/api/${loc}/content/products/${slug}`);
       const json = JSON.parse(txt);
       const name = json.productName || json._title || slug.replace(/-/g, ' ');
-      // On récupère toutes les images du JSON et on privilégie les bannières larges
+      // On récupère toutes les images du JSON, en privilégiant les bannières
+      // LARGES et en évitant les affiches verticales (Tall/Portrait)
       const urls = [...txt.matchAll(/https:\/\/[^"\s\\]+?\.(?:jpe?g|png|webp)[^"\s\\]*/g)].map(x => x[0]);
-      const img = urls.find(x => /wide|landscape/i.test(x)) || urls.find(x => /1920|2560|hero/i.test(x)) || urls[0] || '';
+      const img = urls.find(x => /OfferImageWide|StoreFrontWide|wide|landscape/i.test(x))
+        || urls.find(x => /1920|2560|hero/i.test(x) && !/tall|portrait|logo/i.test(x))
+        || urls.find(x => !/tall|portrait|logo/i.test(x))
+        || urls[0] || '';
       const dm = txt.match(/"(?:description|shortDescription)"\s*:\s*"([^"]{20,300})"/);
       return { img, name, desc: dm ? dm[1] : '' };
     } catch (e) { /* on tente la locale suivante */ }
