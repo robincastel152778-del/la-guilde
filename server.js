@@ -55,6 +55,9 @@ async function initDb() {
   await pool.query(`CREATE TABLE IF NOT EXISTS games (id TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS arcs  (id TEXT PRIMARY KEY, data JSONB NOT NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS meta  (key TEXT PRIMARY KEY, value JSONB NOT NULL)`);
+  // Disponibilités de la semaine (une ligne = une case cochée) et créneaux planifiés
+  await pool.query(`CREATE TABLE IF NOT EXISTS avail (member TEXT NOT NULL, day TEXT NOT NULL, slot TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'free', arc_id TEXT, PRIMARY KEY (member, day, slot))`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS slots (id TEXT PRIMARY KEY, data JSONB NOT NULL)`);
 
   // Liste des joueurs (si absente)
   await pool.query(
@@ -121,9 +124,158 @@ async function logPromo(by) {
   } catch (e) { console.error(e); }
 }
 
+/* ---------- Bot Discord ----------
+   Trois superpouvoirs de plus que le webhook : créer un canal privé par
+   campagne complète, y poster les créneaux avec des boutons ✅/❌, et
+   réagir aux clics en direct. Nécessite DISCORD_BOT_TOKEN et
+   DISCORD_GUILD_ID dans Render (DISCORD_CATEGORY_ID optionnel).
+   Sans eux, l'appli fonctionne en mode webhook seul. */
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
+const GUILD_ID = process.env.DISCORD_GUILD_ID || '';
+const CATEGORY_ID = process.env.DISCORD_CATEGORY_ID || '';
+let DJS = null, bot = null, botReady = false;
+if (BOT_TOKEN && GUILD_ID) {
+  try {
+    DJS = require('discord.js');
+    bot = new DJS.Client({ intents: [DJS.GatewayIntentBits.Guilds] });
+    bot.once('ready', () => { botReady = true; console.log('Bot Discord connecté : ' + bot.user.tag); });
+    bot.on('interactionCreate', onDiscordInteraction);
+    bot.login(BOT_TOKEN).catch(e => console.error('Connexion bot Discord impossible :', e.message));
+  } catch (e) { console.error('discord.js indisponible :', e.message); }
+} else {
+  console.log('Bot Discord non configuré — mode webhook seul.');
+}
+const validDiscordId = v => /^\d{15,21}$/.test(v || '');
+function slugChannel(name) {
+  const base = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  return '🎮-' + (base || 'campagne');
+}
+async function ensureArcChannel(arcId) {
+  if (!botReady) return null;
+  try {
+    const arc = await getArc(arcId);
+    if (!arc) return null;
+    if (arc.channelId) return arc.channelId;
+    const guild = await bot.guilds.fetch(GUILD_ID);
+    const profiles = await getProfiles();
+    const overwrites = [
+      { id: guild.roles.everyone.id, deny: [DJS.PermissionFlagsBits.ViewChannel] },
+      { id: bot.user.id, allow: [DJS.PermissionFlagsBits.ViewChannel, DJS.PermissionFlagsBits.SendMessages] }
+    ];
+    for (const m of (arc.participants || [])) {
+      const did = profiles[m]?.discordId;
+      if (validDiscordId(did)) overwrites.push({ id: did, allow: [DJS.PermissionFlagsBits.ViewChannel, DJS.PermissionFlagsBits.SendMessages] });
+    }
+    const ch = await guild.channels.create({
+      name: slugChannel(arc.name),
+      type: DJS.ChannelType.GuildText,
+      parent: CATEGORY_ID || undefined,
+      permissionOverwrites: overwrites
+    });
+    arc.channelId = ch.id;
+    await saveArcData(arc);
+    await ch.send(`🏰 QG privé de « **${arc.name}** » sur **${arc.gameName}** — équipe : ${joinFr(arc.participants || [])}. Les créneaux planifiés arriveront ici, avec boutons !`);
+    broadcast();
+    return ch.id;
+  } catch (e) { console.error('Création du canal de campagne impossible :', e.message); return null; }
+}
+/* Crée le canal quand une campagne (pas une session) atteint son effectif complet */
+async function maybeCreateChannel(arcId) {
+  try {
+    const arc = await getArc(arcId);
+    if (!arc || arc.status !== 'en cours' || arc.channelId) return;
+    if (arc.kind === 'session' || arc.multi === true) return;
+    if (arc.slots && (arc.participants || []).length >= arc.slots) await ensureArcChannel(arcId);
+  } catch (e) { console.error(e); }
+}
+async function addMemberToChannel(arc, member) {
+  if (!botReady || !arc || !arc.channelId) return;
+  try {
+    const profiles = await getProfiles();
+    const did = profiles[member]?.discordId;
+    if (!validDiscordId(did)) return;
+    const ch = await bot.channels.fetch(arc.channelId);
+    await ch.permissionOverwrites.edit(did, { ViewChannel: true, SendMessages: true });
+    await ch.send(`👋 **${member}** rejoint le canal — bienvenue !`);
+  } catch (e) { console.error('Ajout au canal impossible :', e.message); }
+}
+function slotText(s, arc) {
+  const yes = Object.entries(s.responses || {}).filter(([, v]) => v === 'yes').map(([m]) => m);
+  const no = Object.entries(s.responses || {}).filter(([, v]) => v === 'no').map(([m]) => m);
+  return `🗓️ **${s.createdBy}** propose un créneau pour « **${arc.name}** » : **${ddmm(s.day)} · ${SLOT_LABEL[s.slot]}**\n` +
+    `✅ Partants : ${yes.length ? joinFr(yes) : '—'}\n❌ Pas dispo : ${no.length ? joinFr(no) : '—'}`;
+}
+async function postSlotDiscord(s, arc) {
+  try {
+    const chId = arc.channelId || await ensureArcChannel(arc.id);
+    if (botReady && chId) {
+      const ch = await bot.channels.fetch(chId);
+      const row = new DJS.ActionRowBuilder().addComponents(
+        new DJS.ButtonBuilder().setCustomId(`slot:${s.id}:yes`).setLabel(`✅ J'y serai`).setStyle(DJS.ButtonStyle.Success),
+        new DJS.ButtonBuilder().setCustomId(`slot:${s.id}:no`).setLabel('❌ Pas dispo').setStyle(DJS.ButtonStyle.Danger)
+      );
+      const msg = await ch.send({ content: slotText(s, arc), components: [row] });
+      s.msgChannelId = chId; s.msgId = msg.id;
+      await pool.query(`UPDATE slots SET data=$2 WHERE id=$1`, [s.id, JSON.stringify(s)]);
+    } else {
+      notifyDiscord(`🗓️ **${s.createdBy}** propose un créneau pour « ${arc.name} » : **${ddmm(s.day)} · ${SLOT_LABEL[s.slot]}** — répondez dans La Guilde !`);
+    }
+  } catch (e) { console.error('Notif de créneau impossible :', e.message); }
+}
+async function updateSlotDiscord(s, arc) {
+  if (!botReady || !s.msgId || !s.msgChannelId) return;
+  try {
+    const ch = await bot.channels.fetch(s.msgChannelId);
+    const msg = await ch.messages.fetch(s.msgId);
+    await msg.edit({ content: slotText(s, arc) });
+  } catch (e) { /* message supprimé côté Discord : pas grave */ }
+}
+async function cancelSlotDiscord(s, arc, by) {
+  if (!botReady || !s.msgId || !s.msgChannelId) {
+    notifyDiscord(`🗑️ Le créneau du ${ddmm(s.day)} (${SLOT_LABEL[s.slot]}) pour « ${arc.name} » est annulé par ${by}.`);
+    return;
+  }
+  try {
+    const ch = await bot.channels.fetch(s.msgChannelId);
+    const msg = await ch.messages.fetch(s.msgId);
+    await msg.edit({ content: `~~Créneau du ${ddmm(s.day)} · ${SLOT_LABEL[s.slot]} pour « ${arc.name} »~~\n🗑️ **Annulé par ${by}.**`, components: [] });
+  } catch (e) { console.error(e); }
+}
+async function onDiscordInteraction(interaction) {
+  try {
+    if (!interaction.isButton()) return;
+    const [tag, slotId, ans] = (interaction.customId || '').split(':');
+    if (tag !== 'slot' || !['yes', 'no'].includes(ans)) return;
+    const profiles = await getProfiles();
+    const member = Object.keys(profiles).find(m => profiles[m]?.discordId === interaction.user.id);
+    if (!member) {
+      await interaction.reply({ content: 'Je ne sais pas qui tu es 😅 — colle ton ID Discord dans La Guilde (Mon espace → Profil & avatar), puis reclique.', ephemeral: true });
+      return;
+    }
+    const out = await applySlotResponse(slotId, member, ans);
+    if (out.error === 'not_member') { await interaction.reply({ content: 'Tu ne fais pas partie de cette campagne !', ephemeral: true }); return; }
+    if (out.error) { await interaction.reply({ content: 'Ce créneau n\u2019existe plus.', ephemeral: true }); return; }
+    await interaction.deferUpdate(); // le message est mis à jour par applySlotResponse
+  } catch (e) { console.error('Interaction Discord :', e.message); }
+}
+
 /* ---------- Petites protections sur les entrées ---------- */
 const isStr = (v, max = 300) => typeof v === 'string' && v.length <= max;
 const clampScore = v => Math.max(0, Math.min(10, Math.round(Number(v))));
+
+/* ---------- Tranches horaires des dispos ---------- */
+const DAY_SLOTS = ['matin', 'aprem', '18-20', '20-22', '22-00', '00-02'];
+const SLOT_LABEL = { matin: 'Matin', aprem: 'Aprem', '18-20': '18h-20h', '20-22': '20h-22h', '22-00': '22h-00h', '00-02': '00h-02h' };
+const isDay = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+function mondayISO() {
+  const d = new Date();
+  const wd = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - wd);
+  return d.toISOString().slice(0, 10);
+}
+async function getProfiles() { return (await pool.query(`SELECT value FROM meta WHERE key='profiles'`)).rows[0]?.value ?? {}; }
+async function getArc(id) { const r = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [id]); return r.rows[0]?.data || null; }
+async function saveArcData(arc) { await pool.query(`UPDATE arcs SET data=$2 WHERE id=$1`, [arc.id, JSON.stringify(arc)]); }
 
 /* Valide un objet promo { price, platform, until? } envoyé par le front */
 function parsePromo(p) {
@@ -147,7 +299,11 @@ app.get('/api/state', async (req, res) => {
     const profiles = (await pool.query(`SELECT value FROM meta WHERE key='profiles'`)).rows[0]?.value ?? {};
     const games = (await pool.query(`SELECT data FROM games`)).rows.map(r => r.data);
     const arcs = (await pool.query(`SELECT data FROM arcs`)).rows.map(r => r.data);
-    res.json({ members, profiles, games, arcs });
+    const monday = mondayISO();
+    pool.query(`DELETE FROM avail WHERE day < $1`, [monday]).catch(() => {}); // ménage du passé
+    const avail = (await pool.query(`SELECT member, day, slot, state, arc_id FROM avail WHERE day >= $1`, [monday])).rows;
+    const slots = (await pool.query(`SELECT data FROM slots`)).rows.map(r => r.data).filter(s => s.day >= monday);
+    res.json({ members, profiles, games, arcs, avail, slots });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
@@ -192,6 +348,9 @@ app.post('/api/profile', async (req, res) => {
     else if (isStr(color, 9) && /^#[0-9a-fA-F]{6}$/.test(color)) p.color = color;
     if (tagline === null) delete p.tagline;
     else if (TAGLINES.includes(tagline)) p.tagline = tagline;
+    if (req.body.discordId === null) delete p.discordId;
+    else if (isStr(req.body.discordId, 25) && /^\d{15,21}$/.test(req.body.discordId)) p.discordId = req.body.discordId;
+    if (typeof req.body.lockPref === 'boolean') p.lockPref = req.body.lockPref;
     profiles[member] = p;
     await pool.query(
       `INSERT INTO meta (key, value) VALUES ('profiles', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
@@ -293,6 +452,172 @@ app.post('/api/games/:id/promo', async (req, res) => {
       const linkTxt = game.link ? `\nAllez jeter un œil 👉 ${game.link}` : '';
       notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a trouvé une bonne affaire ! **${game.name}** ${deal}${until} sur ${game.promo.platform}${linkTxt}`);
       logPromo(game.promo.by);
+    }
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* ---------- Disponibilités de la semaine ---------- */
+app.post('/api/avail', async (req, res) => {
+  try {
+    const { member, day, slot, on } = req.body || {};
+    if (!isStr(member, 40) || !member || !isDay(day) || !DAY_SLOTS.includes(slot)) return res.status(400).json({ error: 'invalid' });
+    if (on) {
+      await pool.query(
+        `INSERT INTO avail (member, day, slot, state) VALUES ($1,$2,$3,'free')
+         ON CONFLICT (member, day, slot) DO UPDATE SET state='free', arc_id=NULL WHERE avail.state <> 'locked'`,
+        [member, day, slot]);
+    } else {
+      await pool.query(`DELETE FROM avail WHERE member=$1 AND day=$2 AND slot=$3 AND state <> 'locked'`, [member, day, slot]);
+    }
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* ---------- Créneaux de campagne ---------- */
+/* Verrouille/libère la case du calendrier du joueur (si son option 🔒 est activée) */
+async function lockAvail(member, s, arcId, yes) {
+  try {
+    const profiles = await getProfiles();
+    if (!profiles[member]?.lockPref) return;
+    if (yes) {
+      await pool.query(
+        `INSERT INTO avail (member, day, slot, state, arc_id) VALUES ($1,$2,$3,'locked',$4)
+         ON CONFLICT (member, day, slot) DO UPDATE SET state='locked', arc_id=$4`,
+        [member, s.day, s.slot, arcId]);
+    } else {
+      await pool.query(
+        `UPDATE avail SET state='free', arc_id=NULL WHERE member=$1 AND day=$2 AND slot=$3 AND state='locked' AND arc_id=$4`,
+        [member, s.day, s.slot, arcId]);
+    }
+  } catch (e) { console.error(e); }
+}
+
+app.post('/api/slots', async (req, res) => {
+  try {
+    const { arcId, day, slot, member } = req.body || {};
+    if (!isStr(member, 40) || !isStr(arcId, 60) || !isDay(day) || !DAY_SLOTS.includes(slot)) return res.status(400).json({ error: 'invalid' });
+    const arc = await getArc(arcId);
+    if (!arc || arc.status !== 'en cours') return res.status(404).json({ error: 'not_found' });
+    if (!(arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'not_member' });
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = (await pool.query(`SELECT data FROM slots`)).rows.map(r => r.data).filter(s => s.arcId === arcId && s.day >= today);
+    if (existing.some(s => s.day === day && s.slot === slot)) return res.json({ ok: false, reason: 'dup' });
+    if (existing.length >= 3) return res.json({ ok: false, reason: 'max' });
+    const s = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      arcId, arcName: arc.name, day, slot,
+      createdBy: member, createdAt: new Date().toISOString(),
+      responses: { [member]: 'yes' } // le proposeur est partant d'office
+    };
+    await pool.query(`INSERT INTO slots (id, data) VALUES ($1,$2)`, [s.id, JSON.stringify(s)]);
+    await lockAvail(member, s, arcId, true);
+    postSlotDiscord(s, arc);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Réponse à un créneau — partagée entre l'appli et les boutons Discord */
+async function applySlotResponse(slotId, member, answer) {
+  const r = await pool.query(`SELECT data FROM slots WHERE id=$1`, [slotId]);
+  if (!r.rows.length) return { error: 'not_found' };
+  const s = r.rows[0].data;
+  const arc = await getArc(s.arcId);
+  if (!arc || !(arc.participants || []).includes(member)) return { error: 'not_member' };
+  s.responses = s.responses || {};
+  s.responses[member] = answer;
+  await pool.query(`UPDATE slots SET data=$2 WHERE id=$1`, [slotId, JSON.stringify(s)]);
+  await lockAvail(member, s, s.arcId, answer === 'yes');
+  updateSlotDiscord(s, arc);
+  broadcast();
+  return { slot: s, arc };
+}
+
+app.post('/api/slots/:id/respond', async (req, res) => {
+  try {
+    const { member, answer } = req.body || {};
+    if (!isStr(member, 40) || !['yes', 'no'].includes(answer)) return res.status(400).json({ error: 'invalid' });
+    const out = await applySlotResponse(req.params.id, member, answer);
+    if (out.error) return res.json({ ok: false, reason: out.error });
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+app.delete('/api/slots/:id', async (req, res) => {
+  try {
+    const member = String(req.query.member || '');
+    const r = await pool.query(`SELECT data FROM slots WHERE id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ error: 'not_found' });
+    const s = r.rows[0].data;
+    const arc = await getArc(s.arcId);
+    if (!arc || !(arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'not_member' });
+    await pool.query(`DELETE FROM slots WHERE id=$1`, [req.params.id]);
+    await pool.query(`UPDATE avail SET state='free', arc_id=NULL WHERE day=$1 AND slot=$2 AND state='locked' AND arc_id=$3`, [s.day, s.slot, s.arcId]);
+    cancelSlotDiscord(s, arc, member);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* ---------- Demandes d'adhésion aux campagnes complètes ---------- */
+app.post('/api/arcs/:id/request', async (req, res) => {
+  try {
+    const { member } = req.body || {};
+    if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
+    const arc = await getArc(req.params.id);
+    if (!arc || arc.status !== 'en cours') return res.status(404).json({ error: 'not_found' });
+    if ((arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'already' });
+    arc.requests = arc.requests || {};
+    if (arc.requests[member]) return res.json({ ok: false, reason: 'pending' });
+    arc.requests[member] = { at: new Date().toISOString(), refusals: [] };
+    await saveArcData(arc);
+    notifyDiscord(`🙋 **${member}** demande à rejoindre « ${arc.name} » sur **${arc.gameName}** — membres, un seul « Accepter » suffit, votez dans La Guilde !`);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+app.post('/api/arcs/:id/request/cancel', async (req, res) => {
+  try {
+    const { member } = req.body || {};
+    const arc = await getArc(req.params.id);
+    if (!arc || !arc.requests || !arc.requests[member]) return res.json({ ok: true });
+    delete arc.requests[member];
+    await saveArcData(arc);
+    broadcast();
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
+/* Un seul « Accepter » = adhésion immédiate ; refus définitif si TOUS refusent */
+app.post('/api/arcs/:id/request/decide', async (req, res) => {
+  try {
+    const { applicant, by, accept } = req.body || {};
+    if (!isStr(applicant, 40) || !isStr(by, 40)) return res.status(400).json({ error: 'invalid' });
+    const arc = await getArc(req.params.id);
+    if (!arc || !arc.requests || !arc.requests[applicant]) return res.json({ ok: false, reason: 'gone' });
+    if (!(arc.participants || []).includes(by)) return res.json({ ok: false, reason: 'not_member' });
+    if (accept) {
+      arc.participants.push(applicant);
+      if (arc.slots) arc.slots = arc.participants.length; // l'équipe s'agrandit
+      delete arc.requests[applicant];
+      await saveArcData(arc);
+      notifyDiscord(`🎉 **${applicant}** rejoint la campagne « ${arc.name} » — l'équipe passe à ${arc.participants.length} joueurs !`);
+      await maybeCreateChannel(arc.id);
+      await addMemberToChannel(await getArc(arc.id), applicant);
+    } else {
+      const rq = arc.requests[applicant];
+      if (!rq.refusals.includes(by)) rq.refusals.push(by);
+      if (rq.refusals.length >= (arc.participants || []).length) {
+        delete arc.requests[applicant];
+        await saveArcData(arc);
+        notifyDiscord(`La demande de **${applicant}** pour « ${arc.name} » n\u2019a pas été retenue.`);
+      } else {
+        await saveArcData(arc);
+      }
     }
     broadcast();
     res.json({ ok: true });
@@ -409,6 +734,7 @@ app.post('/api/arcs', async (req, res) => {
     } else {
       notifyDiscord(`🚀 **${arc.createdBy}** lance la campagne « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !${goalLine}`);
     }
+    maybeCreateChannel(arc.id);
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -450,6 +776,7 @@ app.post('/api/arcs/:id/join', async (req, res) => {
       } else {
         notifyDiscord(`➕ **${member}** rejoint l'aventure « ${arc.name} » sur **${arc.gameName}**${arc.slots ? ` (${n}/${arc.slots})` : ''}`);
       }
+      maybeCreateChannel(req.params.id);
       broadcast();
       return res.json({ ok: true });
     }
