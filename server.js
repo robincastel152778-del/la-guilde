@@ -299,14 +299,17 @@ app.post('/api/games/:id/promo', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
-/* Enregistrer des notes : { member: "Hugo", updates: { idDuJeu: 8, ... } }
-   On ne réécrit QUE la note du joueur concerné : deux amis peuvent noter
+/* Enregistrer des notes et/ou la possession :
+   { member, updates: { idDuJeu: 8, ... }, owned: { idDuJeu: true/false, ... } }
+   On ne réécrit QUE les infos du joueur concerné : deux amis peuvent noter
    en même temps sans s'écraser mutuellement. */
 app.post('/api/ratings', async (req, res) => {
   try {
-    const { member, updates } = req.body || {};
-    if (!isStr(member, 40) || !updates || typeof updates !== 'object') return res.status(400).json({ error: 'invalid' });
-    for (const [gameId, score] of Object.entries(updates)) {
+    const { member, updates, owned } = req.body || {};
+    const hasUpd = updates && typeof updates === 'object' && Object.keys(updates).length;
+    const hasOwn = owned && typeof owned === 'object' && Object.keys(owned).length;
+    if (!isStr(member, 40) || (!hasUpd && !hasOwn)) return res.status(400).json({ error: 'invalid' });
+    for (const [gameId, score] of Object.entries(updates || {})) {
       await pool.query(
         `UPDATE games SET data = jsonb_set(data, ARRAY['ratings', $2::text], to_jsonb($3::int), true) WHERE id=$1`,
         [gameId, member, clampScore(score)]
@@ -328,6 +331,13 @@ app.post('/api/ratings', async (req, res) => {
         }
       }
     }
+    // Possession : "je l'ai / je l'ai pas", propre à chaque joueur
+    for (const [gameId, val] of Object.entries(owned || {})) {
+      await pool.query(
+        `UPDATE games SET data = jsonb_set(jsonb_set(data, '{owned}', COALESCE(data->'owned', '{}'::jsonb)), ARRAY['owned', $2::text], to_jsonb($3::boolean)) WHERE id=$1`,
+        [gameId, member, !!val]
+      );
+    }
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -338,57 +348,66 @@ app.post('/api/arcs', async (req, res) => {
   try {
     const b = req.body || {};
     if (!isStr(b.id, 60) || !isStr(b.name, 120) || !b.name.trim()) return res.status(400).json({ error: 'invalid' });
+    const kind = b.kind === 'session' ? 'session' : 'campagne';
     const arc = {
-      id: b.id, name: b.name.trim(),
-      gameId: isStr(b.gameId, 60) ? b.gameId : '',
-      gameName: isStr(b.gameName, 120) ? b.gameName : '?',
+      id: b.id, kind, name: b.name.trim(),
+      gameId: '', gameName: '?',
       participants: Array.isArray(b.participants) ? b.participants.filter(p => isStr(p, 40)) : [],
       startDate: isStr(b.startDate, 20) ? b.startDate : new Date().toISOString().slice(0, 10),
       createdBy: isStr(b.createdBy, 40) ? b.createdBy : '?',
       createdAt: new Date().toISOString(),
       status: 'en cours'
     };
-    // Appel à la campagne : nombre de places visées (optionnel, 2 à 20)
-    const slots = parseInt(b.slots);
-    if (!isNaN(slots) && slots >= 2 && slots <= 20) arc.slots = slots;
-    // Objectif de campagne (texte libre), heure de début, mode multigaming
-    if (isStr(b.goal, 200) && b.goal.trim()) arc.goal = b.goal.trim();
+    if (!arc.participants.length) arc.participants = [arc.createdBy];
     if (isStr(b.time, 10) && b.time) arc.time = b.time;
-    if (b.multi === true) { arc.multi = true; arc.gameName = 'Multigaming'; arc.gameId = ''; }
+    const s = parseInt(b.slots);
+    if (kind === 'session') {
+      // Session jeux = soirée multigaming ouverte, 7 places par défaut
+      arc.multi = true;
+      arc.gameName = 'Multigaming';
+      arc.slots = (!isNaN(s) && s >= 2 && s <= 20) ? s : 7;
+    } else {
+      arc.gameId = isStr(b.gameId, 60) ? b.gameId : '';
+      arc.gameName = isStr(b.gameName, 120) ? b.gameName : '?';
+      if (isStr(b.goal, 200) && b.goal.trim()) arc.goal = b.goal.trim();
+      if (!isNaN(s) && s >= 2 && s <= 20) arc.slots = s;
+      // Limite : 4 campagnes en cours max par joueur (les sessions ne comptent pas)
+      const all = (await pool.query(`SELECT data FROM arcs`)).rows.map(r => r.data);
+      const isCamp = a => a.status === 'en cours' && !(a.kind === 'session' || a.multi === true);
+      const active = all.filter(a => isCamp(a) && (a.participants || []).includes(arc.createdBy)).length;
+      if (active >= 4) return res.json({ ok: false, reason: 'limit' });
+    }
     await pool.query(`INSERT INTO arcs (id, data) VALUES ($1, $2)`, [arc.id, JSON.stringify(arc)]);
 
     const others = arc.participants.filter(p => p !== arc.createdBy);
     const when = `${ddmm(arc.startDate)}${arc.time ? ' à ' + arc.time.replace(':', 'h') : ''}`;
     const goalLine = arc.goal ? `\n🎯 Objectif : ${arc.goal}` : '';
-    if (arc.slots && arc.participants.length < arc.slots) {
+    const open = arc.slots && arc.participants.length < arc.slots;
+    if (kind === 'session') {
       const left = arc.slots - arc.participants.length;
-      if (arc.multi) {
-        // Grosse notif spéciale soirée jeux
-        notifyDiscord([
-          '🎉 ═══════════════════ 🎉',
-          `# 🎮 SOIRÉE JEUX le ${when} !`,
-          `🚀 **${arc.createdBy}** lance « **${arc.name}** » — multigaming au programme !`,
-          `👥 Déjà chauds : ${joinFr(arc.participants)}`,
-          `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — rejoignez l'appel depuis l'onglet « Aventures » !${goalLine}`,
-          '⏰ Et pas de retard, bande de coquins !',
-          '🎉 ═══════════════════ 🎉'
-        ].join('\n'));
-      } else {
-        notifyDiscord([
-          '📣 ═══════════════════ 📣',
-          '# ⚔️ APPEL À LA CAMPAGNE ! ⚔️',
-          `🚀 **${arc.createdBy}** recrute pour « **${arc.name}** » sur **${arc.gameName}** !`,
-          `🗓️ Début souhaité : le ${when}`,
-          `👥 Déjà chauds : ${joinFr(arc.participants)}`,
-          `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — premiers arrivés, premiers servis !${goalLine}`,
-          '👉 Rejoignez l\u2019aventure depuis l\u2019onglet « Aventures » de La Guilde',
-          '📣 ═══════════════════ 📣'
-        ].join('\n'));
-      }
-    } else if (arc.multi) {
-      notifyDiscord(`🎉 **${arc.createdBy}** organise une soirée jeux (multigaming) le ${when} ${others.length ? 'avec ' + joinFr(others) : ''} ! Pas de retard, bande de coquins !${goalLine}`);
+      notifyDiscord([
+        '🎉 ═══════════════════ 🎉',
+        `# 🎮 SOIRÉE JEUX le ${when} !`,
+        `🚀 **${arc.createdBy}** lance « **${arc.name}** » — multigaming au programme !`,
+        `👥 Déjà chauds : ${joinFr(arc.participants)}`,
+        open ? `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — rejoignez l'appel depuis l'onglet « Aventures » !` : `👥 Équipe au complet (${arc.participants.length}/${arc.slots}) !`,
+        '⏰ Et pas de retard, bande de coquins !',
+        '🎉 ═══════════════════ 🎉'
+      ].join('\n'));
+    } else if (open) {
+      const left = arc.slots - arc.participants.length;
+      notifyDiscord([
+        '📣 ═══════════════════ 📣',
+        '# ⚔️ APPEL À LA CAMPAGNE ! ⚔️',
+        `🚀 **${arc.createdBy}** recrute pour « **${arc.name}** » sur **${arc.gameName}** !`,
+        `🗓️ Début souhaité : le ${when}`,
+        `👥 Déjà chauds : ${joinFr(arc.participants)}`,
+        `🔥 **Il reste ${left} place${left > 1 ? 's' : ''} sur ${arc.slots}** — premiers arrivés, premiers servis !${goalLine}`,
+        '👉 Rejoignez l\u2019aventure depuis l\u2019onglet « Aventures » de La Guilde',
+        '📣 ═══════════════════ 📣'
+      ].join('\n'));
     } else {
-      notifyDiscord(`🚀 **${arc.createdBy}** lance l'aventure « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !${goalLine}`);
+      notifyDiscord(`🚀 **${arc.createdBy}** lance la campagne « ${arc.name} » sur **${arc.gameName}** ${others.length ? 'avec ' + joinFr(others) : 'en solo'} ! Bonne chance les nazes !${goalLine}`);
     }
     broadcast();
     res.json({ ok: true });
@@ -403,6 +422,16 @@ app.post('/api/arcs/:id/join', async (req, res) => {
   try {
     const { member } = req.body || {};
     if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
+    // Limite de 4 campagnes actives : on vérifie AVANT d'ajouter (sessions exemptées)
+    const pre = await pool.query(`SELECT data FROM arcs WHERE id=$1`, [req.params.id]);
+    if (!pre.rows.length) return res.status(404).json({ error: 'not_found' });
+    const target = pre.rows[0].data;
+    const isCamp = a => a.status === 'en cours' && !(a.kind === 'session' || a.multi === true);
+    if (isCamp(target)) {
+      const all = (await pool.query(`SELECT data FROM arcs`)).rows.map(r => r.data);
+      const active = all.filter(a => isCamp(a) && (a.participants || []).includes(member)).length;
+      if (active >= 4) return res.json({ ok: false, reason: 'limit' });
+    }
     const upd = await pool.query(
       `UPDATE arcs
        SET data = jsonb_set(data, '{participants}', (data->'participants') || to_jsonb($2::text))
