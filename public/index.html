@@ -155,9 +155,9 @@
   .arc2-body{flex:1; padding:12px 14px 13px; min-width:0;}
   .arc2-title{font-weight:800; font-size:17.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-right:28px;}
   .arc2-cols{display:flex; gap:16px; margin-top:9px; flex-wrap:wrap;}
-  .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; max-width:260px; padding-left:24px;}
-  .arc2-people .pdot{width:64px; height:64px; font-size:24px; border:2px solid var(--panel2); margin-left:-24px; margin-bottom:4px;}
-  .arc2-people .pemoji{font-size:40px;}
+  .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; max-width:250px; padding-left:21px;}
+  .arc2-people .pdot{width:64px; height:64px; font-size:21px; border:2px solid var(--panel2); margin-left:-21px; margin-bottom:4px;}
+  .arc2-people .pemoji{font-size:43px;}
   .arc2-info{flex:1; min-width:190px;}
   .arc2-goal{font-size:14.5px; font-weight:650; margin-top:5px;}
   .btn-join{margin-top:10px; padding:9px 20px; font-size:14.5px;}
@@ -167,6 +167,10 @@
   .status-select:focus{outline:none; border-color:var(--accent);}
   .col-opt{width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0;}
   .col-opt.sel{border-color:#fff; box-shadow:0 0 0 2px var(--gold);}
+  .lib-row{display:flex; gap:14px; align-items:center; border-bottom:1px solid var(--border); padding:12px 0;}
+  .lib-row:last-child{border-bottom:none;}
+  .lib-img{width:140px; aspect-ratio:460/215; flex-shrink:0; position:relative; border-radius:8px; overflow:hidden; background:linear-gradient(135deg, var(--accent-soft), var(--panel)); display:flex; align-items:center; justify-content:center;}
+  .lib-img img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
 
   /* ===== Top 5 ===== */
   .top-row{display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--border);}
@@ -298,15 +302,20 @@ function updateImgField(){
   if(f) f.style.display = isAutoImageLink(link) ? 'none' : 'block';
 }
 function arcGame(a){ return GAMES.find(x=>x.id===a.gameId) || GAMES.find(x=>x.name===a.gameName); }
-function arcImage(a){
-  if(a.multi) return null;
-  const g = arcGame(a);
+/* Bannière du mode multigaming (image auto-générée, aucun fichier externe) */
+const MULTI_IMG = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 215"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#221B45"/></linearGradient></defs><rect width="460" height="215" fill="url(#g)"/><text x="230" y="108" font-size="72" text-anchor="middle">🎮</text><text x="230" y="172" font-size="30" font-family="Arial,Helvetica,sans-serif" font-weight="bold" fill="#FFC857" text-anchor="middle" letter-spacing="7">MULTIGAMING</text></svg>');
+/* Image d'un jeu : Steam > Epic/GOG/IG > image manuelle */
+function gameImage(g){
   if(!g) return null;
   const id = steamAppId(g);
   if(id) return `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
   const o = ogUrl(g.link);
   if(o) return OG_CACHE[o]?.img || null; // chargée après coup par hydrateOg
-  return g.img || null; // image renseignée à la main pour les jeux hors boutiques
+  return g.img || null;
+}
+function arcImage(a){
+  if(a.multi || a.kind === 'session') return MULTI_IMG;
+  return gameImage(arcGame(a));
 }
 /* Charge après coup les images Epic/GOG/IG des bandeaux affichés */
 async function hydrateOg(){
@@ -382,7 +391,7 @@ function promoPct(g){
 /* Le nom d'un jeu, cliquable vers sa page Steam/trailer si renseignée */
 function gameName(g, stop){
   const n = esc(g.name);
-  return g.link ? `<a class="game-link" href="${esc(g.link)}" target="_blank" rel="noopener"${stop?' onclick="event.stopPropagation()"':''}>${n}</a>` : n;
+  return g.link ? `<a class="game-link" data-game="${g.id}" href="${esc(g.link)}" target="_blank" rel="noopener"${stop?' onclick="event.stopPropagation()"':''}>${n}</a>` : n;
 }
 function priceLabel(g){
   const base = (g.price===0) ? '<span class="price">Gratuit</span>'
@@ -434,7 +443,7 @@ async function refreshData(silent){
 function render(){
   const app = document.getElementById('app');
   if(!ME){ app.innerHTML = renderOnboard(); return; }
-  const toRate = GAMES.filter(g => g.ratings?.[ME] == null && !(g.proposedBy||[]).includes(ME)).length;
+  const toRate = GAMES.filter(g => g.ratings?.[ME] == null || (g.owned ? g.owned[ME] : undefined) === undefined).length;
   app.innerHTML = `
     <header>
       <div class="head-inner">
@@ -447,12 +456,13 @@ function render(){
       <nav>
         <button class="tab ${TAB==='panneau'?'active':''}" onclick="setTab('panneau')">Panneau général</button>
         <button class="tab ${TAB==='perso'?'active':''}" onclick="setTab('perso')">Mon espace${toRate?`<span class="badge">${toRate}</span>`:''}</button>
+        <button class="tab ${TAB==='biblio'?'active':''}" onclick="setTab('biblio')">📚 Ma bibliothèque</button>
         <button class="tab ${TAB==='social'?'active':''}" onclick="setTab('social')">Social</button>
         <button class="tab ${TAB==='jeux'?'active':''}" onclick="setTab('jeux')">Tous les jeux</button>
         <button class="tab ${TAB==='aventures'?'active':''}" onclick="setTab('aventures')">Aventures</button>
       </nav>
     </header>
-    <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='social' ? viewSocial() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
+    <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='biblio' ? viewBiblio() : TAB==='social' ? viewSocial() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
   setTimeout(hydrateOg, 30);
 }
 function setTab(t){ if(t==='social') SOCIAL_SEL=null; TAB=t; refreshData(true); }
@@ -569,7 +579,7 @@ function viewPerso(){
       <button class="action-btn" onclick="openAddGame()"><span class="icon">🎮</span><span class="label">Proposer un jeu</span><div class="hint">Nom, genres, prix, ton envie…</div></button>
       <button class="action-btn" onclick="openRateNew()"><span class="icon">⭐</span><span class="label">Noter les nouveautés</span><div class="hint">Les jeux que tu n\u2019as pas encore notés</div>${toRate.length?`<span class="count">${toRate.length}</span>`:''}</button>
       <button class="action-btn" onclick="openEditRatings()"><span class="icon">✏️</span><span class="label">Modifier mes notes</span><div class="hint">Changer une envie déjà donnée</div></button>
-      <button class="action-btn" onclick="openNewArc()"><span class="icon">🚀</span><span class="label">Lancer une aventure</span><div class="hint">Annonce un nouvel arc au groupe</div></button>
+      <button class="action-btn" onclick="openNewArc()"><span class="icon">🚀</span><span class="label">Lancer une aventure</span><div class="hint">Campagne sérieuse ou session jeux du soir</div></button>
     </div>
 
     <div class="card">
@@ -623,6 +633,43 @@ function viewPerso(){
           </div>`; }).join('') : '<div class="empty">Rien à signaler : tu as déjà noté tous les jeux populaires du groupe.</div>'}
       </div>
     </div>`;
+}
+
+/* ---------- Vue : Ma bibliothèque ---------- */
+function viewBiblio(){
+  const mine = GAMES.filter(g => g.owned?.[ME] === true).sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+  return `<div class="card">
+    <div class="eyebrow">📚 Ma bibliothèque — ${mine.length} jeu${mine.length>1?'x':''}</div>
+    ${mine.length ? mine.map(g=>{
+      const img = gameImage(g);
+      const og = !img ? ogUrl(g.link) : null;
+      const owners = MEMBERS.filter(m=> m!==ME && g.owned?.[m]===true);
+      const fans = MEMBERS.filter(m=> (g.ratings?.[m]??-1) >= 7);
+      return `<div class="lib-row">
+        <div class="lib-img"${og?` data-og="${esc(og)}"`:''}><span class="arc2-fallback" style="font-size:26px">${esc(g.name.charAt(0).toUpperCase())}</span>${img?`<img src="${esc(img)}" alt="" loading="lazy" onerror="this.remove()">`:''}</div>
+        <div style="flex:1; min-width:0">
+          <div class="game-name" style="font-size:15.5px">${gameName(g)}</div>
+          <div class="game-meta" style="margin-top:5px">${owners.length ? 'L\u2019ont aussi : ' + owners.map(m=>pchip(m)).join('') : 'Tu es le seul à l\u2019avoir (pour l\u2019instant)'}</div>
+          <div class="game-meta" style="margin-top:3px">${fans.length ? 'Bien noté par : ' + fans.map(m=>pchip(m, g.ratings[m])).join('') : 'Pas encore de fans déclarés'}</div>
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty">Ta bibliothèque est vide. Réponds « Je l\u2019ai ✔ » en notant les jeux (bouton « Noter les nouveautés » de Mon espace) pour la remplir.</div>'}
+  </div>`;
+}
+/* Picker « je l'ai / je l'ai pas » */
+function ownPicker(id, cur){
+  return `<div class="chips" data-own="${id}" style="margin-top:8px">
+    <button type="button" class="chip-opt ${cur===true?'sel':''}" data-v="1" onclick="pickOwn(this)">Je l\u2019ai ✔</button>
+    <button type="button" class="chip-opt ${cur===false?'sel':''}" data-v="0" onclick="pickOwn(this)">Je l\u2019ai pas</button>
+  </div>`;
+}
+function pickOwn(btn){
+  btn.parentElement.querySelectorAll('.chip-opt').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+function getOwn(container, id){
+  const s = container.querySelector(`.chips[data-own="${id}"] .chip-opt.sel`);
+  return s ? s.dataset.v === '1' : null;
 }
 
 /* ---------- Vue : Social ---------- */
@@ -885,6 +932,7 @@ async function joinArc(id){
   if(r.ok) toast('Bienvenue dans l\u2019aventure ! 🎉');
   else if(r.reason==='already') toast('Tu es déjà dans cette aventure 😄');
   else if(r.reason==='full') toast('Trop tard, c\u2019est complet ! 😢');
+  else if(r.reason==='limit') toast('Tu as déjà 4 campagnes en cours — termine-en une d\u2019abord !');
   else if(r.reason==='closed') toast('Cette aventure est déjà terminée');
   render();
 }
@@ -1045,12 +1093,12 @@ async function saveGame(editId){
 
 /* --- Noter les nouveautés --- */
 function openRateNew(){
-  const toRate = GAMES.filter(g => g.ratings?.[ME] == null)
+  const toRate = GAMES.filter(g => g.ratings?.[ME] == null || (g.owned ? g.owned[ME] : undefined) === undefined)
                       .sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
-  if(!toRate.length){ toast('Tu as déjà tout noté 👏'); return; }
+  if(!toRate.length){ toast('Tu es à jour sur tout 👏'); return; }
   openModal(`
     <h2>Noter les nouveautés</h2>
-    <div class="sub">${toRate.length} jeu${toRate.length>1?'x':''} attend${toRate.length>1?'ent':''} ton avis. Note ceux que tu veux, on sauvegarde tout d\u2019un coup.</div>
+    <div class="sub">${toRate.length} jeu${toRate.length>1?'x':''} attend${toRate.length>1?'ent':''} ta note d\u2019envie et/ou ta réponse « je l\u2019ai / je l\u2019ai pas ». On sauvegarde tout d\u2019un coup.</div>
     ${toRate.map(g=>`
       <div class="rate-item">
         <div class="rate-head">
@@ -1061,21 +1109,26 @@ function openRateNew(){
           ${g.link?`<a href="${esc(g.link)}" target="_blank" rel="noopener" style="font-size:12px">trailer ↗</a>`:''}
         </div>
         ${g.note?`<div class="comment" style="margin:0 0 8px">« ${esc(g.note)} »</div>`:''}
-        ${scorePicker('rate-'+g.id, null)}
+        ${scorePicker('rate-'+g.id, g.ratings?.[ME] ?? null)}
+        ${ownPicker(g.id, g.owned ? g.owned[ME] : undefined)}
       </div>`).join('')}
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Plus tard</button>
-      <button class="btn primary" onclick="saveNewRatings()">Enregistrer mes notes</button>
+      <button class="btn primary" onclick="saveNewRatings()">Enregistrer</button>
     </div>`);
 }
 async function saveNewRatings(){
   const m = document.querySelector('.modal');
   const updates = {};
-  GAMES.forEach(g=>{ const s = getScore(m,'rate-'+g.id); if(s!=null) updates[g.id]=s; });
-  if(!Object.keys(updates).length){ closeModal(); return; }
-  await apiSend('/api/ratings', 'POST', { member: ME, updates });
+  const owned = {};
+  GAMES.forEach(g=>{
+    const s = getScore(m,'rate-'+g.id); if(s!=null && s !== g.ratings?.[ME]) updates[g.id]=s;
+    const o = getOwn(m, g.id); if(o!==null && o !== (g.owned ? g.owned[ME] : undefined)) owned[g.id]=o;
+  });
+  if(!Object.keys(updates).length && !Object.keys(owned).length){ closeModal(); return; }
+  await apiSend('/api/ratings', 'POST', { member: ME, updates, owned });
   await loadAll();
-  toast(Object.keys(updates).length + ' note(s) enregistrée(s) ⭐');
+  toast('Réponses enregistrées ⭐');
   closeModal(); render();
 }
 
@@ -1103,8 +1156,9 @@ function openRateOne(id){
   const g = GAMES.find(x=>x.id===id); if(!g) return;
   openModal(`
     <h2>${esc(g.name)}</h2>
-    <div class="sub">À quel point tu as envie d\u2019y jouer ?</div>
+    <div class="sub">À quel point tu as envie d\u2019y jouer ? Et tu le possèdes ?</div>
     ${scorePicker('rate-'+g.id, g.ratings?.[ME] ?? null)}
+    ${ownPicker(g.id, g.owned ? g.owned[ME] : undefined)}
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Annuler</button>
       <button class="btn primary" onclick="saveNewRatings()">Enregistrer</button>
@@ -1167,51 +1221,94 @@ async function removePromo(id){
 }
 
 /* --- Lancer une aventure --- */
-function openNewArc(){
-  const sorted = [...GAMES].sort((a,b)=> a.name.localeCompare(b.name,'fr'));
+function openNewArc(kind){
+  kind = kind === 'session' ? 'session' : 'campagne';
   const today = new Date().toISOString().slice(0,10);
+  const tabs = `<div class="chips" style="margin-bottom:16px">
+    <button type="button" class="chip-opt ${kind==='campagne'?'sel':''}" onclick="openNewArc('campagne')">\u2694\uFE0F Campagne</button>
+    <button type="button" class="chip-opt ${kind==='session'?'sel':''}" onclick="openNewArc('session')">\uD83C\uDFAE Session jeux</button>
+  </div>`;
+  if(kind === 'session'){
+    openModal(`
+      <h2>Lancer une session jeux</h2>
+      <div class="sub">Une soir\u00e9e multigaming ouverte \u00e0 tous : 7 places automatiques, chacun peut rejoindre, et Discord est pr\u00e9venu en grande pompe.</div>
+      ${tabs}
+      <div class="field"><label>Nom de la session *</label><input type="text" id="a-name" placeholder="Ex : La soir\u00e9e du vendredi"></div>
+      <div class="field"><label>Qui est d\u00e9j\u00e0 chaud ?</label>${chipMulti('parts', MEMBERS, [ME])}</div>
+      <div class="field"><label>Date *</label><input type="date" id="a-date" value="${today}"></div>
+      <div class="field"><label>Heure de d\u00e9but</label><input type="time" id="a-time"></div>
+      <div class="err" id="a-err"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn primary" onclick="saveArc('session')">Lancer la soir\u00e9e \uD83C\uDF89</button>
+      </div>`);
+    return;
+  }
+  const sorted = [...GAMES].sort((a,b)=> a.name.localeCompare(b.name,'fr'));
   openModal(`
-    <h2>Lancer une aventure</h2>
-    <div class="sub">Annonce au groupe qu\u2019un nouvel arc commence.</div>
-    <div class="field"><label>Nom de l\u2019arc *</label><input type="text" id="a-name" placeholder="Ex : L\u2019expédition du Nether"></div>
-    <div class="field"><label>Jeu *</label><select id="a-game" onchange="document.getElementById('a-multi-hint').style.display = this.value==='__multi' ? 'block' : 'none'">
-      <option value="__multi">🎮 Multigaming — soirée multi-jeux</option>
-      ${sorted.map(g=>`<option value="${g.id}" ${sorted.length&&g.id===sorted[0].id?'selected':''}>${esc(g.name)}</option>`).join('')}
-    </select>
-    <div id="a-multi-hint" class="game-meta" style="display:none; margin-top:5px">Mode soirée jeux : pas de jeu imposé, la notif Discord annoncera la date et l'heure. Pensez à remplir l'heure juste en dessous !</div></div>
-    <div class="field"><label>🎯 Objectif de la campagne (optionnel)</label><input type="text" id="a-goal" maxlength="200" placeholder="Découvrir le jeu, le finir, monter Gold, battre le boss final…"></div>
-    <div class="field"><label>Qui est déjà chaud ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
-    <div class="field"><label>📣 Appel à la campagne — places totales visées (optionnel)</label>
-      <input type="number" id="a-slots" min="2" max="20" placeholder="Ex : 5 — laisse vide pour une campagne classique">
-      <div class="game-meta" style="margin-top:5px">S'il reste des places, une grosse notif Discord partira et les autres pourront rejoindre. La campagne démarre même si l'équipe n'est pas complète.</div>
+    <h2>Lancer une campagne</h2>
+    <div class="sub">Une vraie aventure : un jeu, un objectif, une \u00e9quipe. Limite : 4 campagnes en cours par joueur.</div>
+    ${tabs}
+    <div class="field"><label>Nom de la campagne *</label><input type="text" id="a-name" placeholder="Ex : L\u2019exp\u00e9dition du Nether"></div>
+    <div class="field"><label>Jeu *</label><select id="a-game">${sorted.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>\uD83C\uDFAF Objectif (optionnel)</label><input type="text" id="a-goal" maxlength="200" placeholder="D\u00e9couvrir le jeu, le finir, monter Gold\u2026"></div>
+    <div class="field"><label>Mode</label>
+      <div class="chips">
+        <button type="button" class="chip-opt" id="mode-solo" onclick="toggleArcMode(false)">Solo</button>
+        <button type="button" class="chip-opt sel" id="mode-multi" onclick="toggleArcMode(true)">Multijoueurs</button>
+      </div>
     </div>
-    <div class="field"><label>Date de début souhaitée</label><input type="date" id="a-date" value="${today}"></div>
-    <div class="field"><label>Heure de début (optionnel)</label><input type="time" id="a-time"></div>
+    <div id="a-multi-fields">
+      <div class="field"><label>Qui est d\u00e9j\u00e0 chaud ? *</label>${chipMulti('parts', MEMBERS, [ME])}</div>
+      <div class="field"><label>\uD83D\uDCE3 Combien de joueurs pour \u00eatre au complet ? (optionnel \u2014 lance un appel)</label>
+        <input type="number" id="a-slots" min="2" max="20" placeholder="Ex : 5 \u2014 laisse vide si l\u2019\u00e9quipe est d\u00e9j\u00e0 faite">
+      </div>
+    </div>
+    <div class="field"><label>Date de d\u00e9but souhait\u00e9e *</label><input type="date" id="a-date" value="${today}"></div>
+    <div class="field"><label>Heure de d\u00e9but</label><input type="time" id="a-time"></div>
     <div class="err" id="a-err"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">Annuler</button>
-      <button class="btn primary" onclick="saveArc()">Lancer 🚀</button>
+      <button class="btn primary" onclick="saveArc('campagne')">Lancer \uD83D\uDE80</button>
     </div>`);
 }
-async function saveArc(){
+function toggleArcMode(multi){
+  document.getElementById('mode-solo').classList.toggle('sel', !multi);
+  document.getElementById('mode-multi').classList.toggle('sel', multi);
+  document.getElementById('a-multi-fields').style.display = multi ? 'block' : 'none';
+}
+async function saveArc(kind){
   const m = document.querySelector('.modal');
   const name = document.getElementById('a-name').value.trim();
-  if(!name) return showErr('a-err','Donne un nom à cet arc — c\u2019est plus épique.');
-  const gameId = document.getElementById('a-game').value;
-  const multi = gameId === '__multi';
-  const game = multi ? null : GAMES.find(g=>g.id===gameId);
-  const participants = getChips(m,'parts');
-  if(!participants.length) return showErr('a-err','Sélectionne au moins un participant.');
+  if(!name) return showErr('a-err','Donne-lui un nom \u2014 c\u2019est plus \u00e9pique.');
   const startDate = document.getElementById('a-date').value || new Date().toISOString().slice(0,10);
   const time = document.getElementById('a-time').value || '';
-  const goal = document.getElementById('a-goal').value.trim();
-  const slotsRaw = document.getElementById('a-slots').value;
-  const slots = slotsRaw === '' ? null : parseInt(slotsRaw);
-  if(slots !== null && (isNaN(slots) || slots < 2 || slots > 20)) return showErr('a-err','Le nombre de places doit être entre 2 et 20.');
-  const arc = { id:uid(), name, gameId: multi?'':gameId, gameName: multi?'Multigaming':(game?.name||'?'), participants, startDate, createdBy:ME, slots, goal, time, multi };
-  await apiSend('/api/arcs', 'POST', arc);
+  let body;
+  if(kind === 'session'){
+    let participants = getChips(m,'parts');
+    if(!participants.includes(ME)) participants = [ME, ...participants];
+    body = { id:uid(), kind:'session', name, participants, startDate, time, createdBy:ME };
+  } else {
+    const gameId = document.getElementById('a-game').value;
+    if(!gameId) return showErr('a-err','Il faut un jeu \u2014 propose-le d\u2019abord dans le grimoire si besoin.');
+    const game = GAMES.find(g=>g.id===gameId);
+    const goal = document.getElementById('a-goal').value.trim();
+    const isMulti = document.getElementById('mode-multi').classList.contains('sel');
+    let participants = [ME], slots = null;
+    if(isMulti){
+      participants = getChips(m,'parts');
+      if(!participants.length) return showErr('a-err','S\u00e9lectionne au moins un participant.');
+      const slotsRaw = document.getElementById('a-slots').value;
+      slots = slotsRaw === '' ? null : parseInt(slotsRaw);
+      if(slots !== null && (isNaN(slots) || slots < 2 || slots > 20)) return showErr('a-err','Le nombre de joueurs doit \u00eatre entre 2 et 20.');
+    }
+    body = { id:uid(), kind:'campagne', name, gameId, gameName:game?.name||'?', participants, startDate, time, goal, slots, createdBy:ME };
+  }
+  const r = await apiSend('/api/arcs', 'POST', body);
+  if(r && r.ok === false && r.reason === 'limit')
+    return showErr('a-err','Tu as d\u00e9j\u00e0 4 campagnes en cours \u2014 termine-en une avant d\u2019en lancer une nouvelle !');
   await loadAll();
-  toast('Aventure lancée — bon jeu à ' + participants.join(', ') + ' !');
+  toast(kind==='session' ? 'Soir\u00e9e annonc\u00e9e \u2014 pas de retard ! \uD83C\uDF89' : 'Campagne lanc\u00e9e \uD83D\uDE80');
   closeModal(); render();
 }
 
@@ -1259,7 +1356,9 @@ document.addEventListener('mouseover', e => {
   clearTimeout(POP_TIMER);
   if(m){ POP_TIMER = setTimeout(()=> showSteamPop(m[1], a), 350); return; }
   const o = ogUrl(a.href || '');
-  if(o) POP_TIMER = setTimeout(()=> showOgPop(o, a), 350);
+  if(o){ POP_TIMER = setTimeout(()=> showOgPop(o, a), 350); return; }
+  const gg = GAMES.find(x => x.id === a.getAttribute('data-game'));
+  if(gg && gg.img) POP_TIMER = setTimeout(()=> showLocalPop(gg, a), 350);
 });
 document.addEventListener('mouseout', e => {
   if(e.target.closest && e.target.closest('a.game-link')){ clearTimeout(POP_TIMER); hideSteamPop(); }
@@ -1324,6 +1423,26 @@ function showAvatarPop(name, anchor){
   document.body.appendChild(AV_EL);
 }
 function hideAvatarPop(){ if(AV_EL){ AV_EL.remove(); AV_EL = null; } }
+function showLocalPop(g, anchor){
+  if(!document.body.contains(anchor)) return;
+  hideSteamPop();
+  const rect = anchor.getBoundingClientRect();
+  POP_EL = document.createElement('div');
+  POP_EL.className = 'steam-pop';
+  POP_EL.style.top = Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 270)) + 'px';
+  POP_EL.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 316)) + 'px';
+  POP_EL.innerHTML = `<img src="${esc(g.img)}" alt="" onerror="this.remove()">
+    <div class="sp-body">
+      <div class="sp-name">${esc(g.name)}</div>
+      ${g.note?`<div class="sp-desc">${esc(g.note.slice(0,180))}${g.note.length>180?'…':''}</div>`:''}
+      <div class="sp-meta">
+        ${(g.genres||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+        ${g.price===0?'<span class="price">Gratuit</span>':(g.price!=null?`<span class="price paid">${esc(g.price)} €</span>`:'')}
+      </div>
+    </div>`;
+  document.body.appendChild(POP_EL);
+}
+
 async function showOgPop(url, anchor){
   try{
     let d = OG_CACHE[url];
