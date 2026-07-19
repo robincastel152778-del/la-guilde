@@ -146,6 +146,10 @@
   /* ===== Bandeaux de campagne v2 ===== */
   .arc2{display:flex; background:var(--panel2); border:1px solid var(--border); border-radius:12px; margin-bottom:12px; overflow:hidden; position:relative;}
   .arc2.done{opacity:.55;}
+  .arc2.done-win{opacity:.72; border-color:rgba(74,222,128,.55); background:linear-gradient(0deg, rgba(74,222,128,.07), rgba(74,222,128,.07)), var(--panel2);}
+  .arc2.done-fail{opacity:.72; border-color:rgba(255,107,129,.55); background:linear-gradient(0deg, rgba(255,107,129,.06), rgba(255,107,129,.06)), var(--panel2);}
+  .arc-status.win{background:rgba(74,222,128,.2); color:var(--green);}
+  .arc-status.fail{background:rgba(255,107,129,.2); color:var(--coral);}
   .arc2-img{width:225px; aspect-ratio:460/215; align-self:center; margin:12px 0 12px 12px; flex-shrink:0; position:relative; border-radius:9px; overflow:hidden; background:linear-gradient(135deg, var(--accent-soft), var(--panel)); display:flex; align-items:center; justify-content:center;}
   .grid-main{display:grid; grid-template-columns:3fr 2fr; gap:18px;}
   .grid-main .arc2-img{width:250px;}
@@ -171,6 +175,15 @@
   .lib-row:last-child{border-bottom:none;}
   .lib-img{width:140px; aspect-ratio:460/215; flex-shrink:0; position:relative; border-radius:8px; overflow:hidden; background:linear-gradient(135deg, var(--accent-soft), var(--panel)); display:flex; align-items:center; justify-content:center;}
   .lib-img img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .week-nav{display:flex; align-items:center; justify-content:center; gap:12px; margin-bottom:10px; font-size:14px;}
+  .week-grid{width:100%; border-collapse:separate; border-spacing:3px; table-layout:fixed;}
+  .week-grid th{font-size:11px; color:var(--muted); padding:2px; font-weight:700; text-transform:uppercase;}
+  .week-grid th .dnum{display:block; font-size:12px; color:var(--text); font-weight:800;}
+  .week-grid td{height:32px; text-align:center; cursor:pointer; font-size:12px; border-radius:6px; background:var(--panel2); border:1px solid var(--border); user-select:none;}
+  .week-grid td.rowlabel{cursor:default; color:var(--muted); font-size:10.5px; width:56px; background:none; border:none; text-align:right; padding-right:6px;}
+  .week-grid td.cell-free{background:rgba(74,222,128,.4); border-color:rgba(74,222,128,.5); color:#eafff2; font-weight:700;}
+  .week-grid td.cell-locked{background:rgba(139,124,255,.4); border-color:var(--accent); cursor:not-allowed;}
+  .week-grid td.cell-past{opacity:.28; cursor:default; pointer-events:none;}
 
   /* ===== Top 5 ===== */
   .top-row{display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid var(--border);}
@@ -254,8 +267,12 @@ const STATUS = {
 };
 const AVATARS = ['🎮','🕹️','👾','🤖','🧙','🧝','🧛','🧟','🥷','🦸','🦹','👑','🐉','🦖','🦕','🐺','🦊','🐻','🐼','🐸','🐢','🐙','🦑','🦉','🦅','🦇','🐍','🦂','🕷️','🦈','🐲','👻','💀','☠️','👽','🛸','🔥','⚡','❄️','🌙','⭐','☄️','🗡️','⚔️','🛡️','🏹','🪄','🧪','💣','🎯'];
 const TAGLINES = ['Rage quit imminent', 'AFK professionnel', '300h de jeu, toujours nul', '« Une dernière et j\u2019arrête »', 'Delu et le sait'];
+const DAY_SLOTS = ['matin','aprem','18-20','20-22','22-00','00-02'];
+const SLOT_LAB = { matin:'Matin', aprem:'Aprem', '18-20':'18h-20h', '20-22':'20h-22h', '22-00':'22h-00h', '00-02':'00h-02h' };
+const DAY_LAB = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const joinFrF = arr => arr.length<=1 ? (arr[0]||'') : arr.slice(0,-1).join(', ') + ' et ' + arr[arr.length-1];
 
-let ME=null, MEMBERS=[], GAMES=[], ARCS=[], PROFILES={}, TAB='panneau', SOCIAL_SEL=null;
+let ME=null, MEMBERS=[], GAMES=[], ARCS=[], PROFILES={}, AVAIL=[], SLOTS_DATA=[], TAB='panneau', SOCIAL_SEL=null;
 
 /* ---------- Couche API : toutes les données passent par le serveur ---------- */
 async function apiGet(path){
@@ -271,6 +288,7 @@ async function apiSend(path, method, body){
 async function loadAll(){
   const s = await apiGet('/api/state');
   MEMBERS = s.members || []; GAMES = s.games || []; ARCS = s.arcs || []; PROFILES = s.profiles || {};
+  AVAIL = s.avail || []; SLOTS_DATA = s.slots || [];
   GAMES.sort((a,b)=> new Date(a.addedAt) - new Date(b.addedAt));
 }
 /* Le profil choisi est mémorisé sur CE navigateur uniquement */
@@ -338,9 +356,14 @@ async function hydrateOg(){
     }catch(e){ /* pas d'image, le fond dégradé reste */ }
   }
 }
-/* Badge d'état : Terminée / Commence dans X jours / En cours */
+/* Badge d'état : Réussie ✓ / Échouée ✗ / Terminée / Commence dans X jours / En cours */
 function arcStatusBadge(a){
-  if(a.status !== 'en cours') return '<span class="arc-status off">Terminée</span>';
+  if(a.status !== 'en cours'){
+    if(a.goal) return a.goalDone
+      ? '<span class="arc-status win">✓ Objectif réussi</span>'
+      : '<span class="arc-status fail">✗ Objectif raté</span>';
+    return '<span class="arc-status off">Terminée</span>';
+  }
   const today = todayStr();
   if(a.startDate > today){
     const days = Math.max(1, Math.round((new Date(a.startDate) - new Date(today)) / 86400000));
@@ -507,7 +530,9 @@ function pickProfile(name){ ME=name; saveProfile(name); render(); }
 /* ---------- Vue : Panneau général ---------- */
 function viewPanneau(){
   const recent = [...GAMES].sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt)).slice(0,5);
-  const lastArcs = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt)).slice(0,5);
+  const activeArcs = ARCS.filter(a=>a.status==='en cours').sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const first3 = activeArcs.slice(0,3);
+  const rest = activeArcs.slice(3,12);
   const promos = GAMES.filter(promoActive)
     .sort((a,b)=> (a.promo.until||'9999-99-99').localeCompare(b.promo.until||'9999-99-99'))
     .slice(0,5);
@@ -527,8 +552,11 @@ function viewPanneau(){
     </div>
     <div class="grid-main">
       <div class="card">
-        <div class="eyebrow">Dernières campagnes lancées</div>
-        ${lastArcs.length ? lastArcs.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune aventure lancée. Lance la première depuis ton espace !</div>'}
+        <div class="eyebrow">Campagnes en cours</div>
+        ${first3.length ? first3.map(a=>arcCard(a)).join('') : '<div class="empty">Aucune campagne en cours. Lance la première depuis ton espace !</div>'}
+        ${rest.length ? `
+          <div id="more-arcs" style="display:none">${rest.map(a=>arcCard(a)).join('')}</div>
+          <button class="mini-btn" id="more-arcs-btn" style="width:100%; padding:9px" onclick="toggleMoreArcs(${rest.length})">▾ Afficher ${rest.length} campagne${rest.length>1?'s':''} de plus</button>` : ''}
       </div>
       <div class="card">
         <div class="eyebrow">🏷️ Promos en cours à ne pas rater</div>
@@ -543,6 +571,14 @@ function viewPanneau(){
           </div>`).join('') : '<div class="empty">Aucune promo signalée en ce moment. Un jeu bradé quelque part ? Signale-le depuis sa fiche !</div>'}
       </div>
     </div>`;
+}
+
+function toggleMoreArcs(n){
+  const d = document.getElementById('more-arcs');
+  const b = document.getElementById('more-arcs-btn');
+  const open = d.style.display !== 'none';
+  d.style.display = open ? 'none' : 'block';
+  b.textContent = open ? `▾ Afficher ${n} campagne${n>1?'s':''} de plus` : '▴ Réduire';
 }
 
 /* ---------- Vue : Mon espace ---------- */
@@ -572,7 +608,7 @@ function viewPerso(){
         ${TAGLINES.map(t=>`<option value="${esc(t)}" ${getProf(ME).tagline===t?'selected':''}>${esc(t)}</option>`).join('')}
       </select>
       <span style="flex:1"></span>
-      <button class="mini-btn" onclick="openAvatar()">🖼️ Avatar & couleur</button>
+      <button class="mini-btn" onclick="openAvatar()">🛠️ Profil & avatar</button>
     </div>
 
     <div class="actions">
@@ -580,6 +616,7 @@ function viewPerso(){
       <button class="action-btn" onclick="openRateNew()"><span class="icon">⭐</span><span class="label">Noter les nouveautés</span><div class="hint">Les jeux que tu n\u2019as pas encore notés</div>${toRate.length?`<span class="count">${toRate.length}</span>`:''}</button>
       <button class="action-btn" onclick="openEditRatings()"><span class="icon">✏️</span><span class="label">Modifier mes notes</span><div class="hint">Changer une envie déjà donnée</div></button>
       <button class="action-btn" onclick="openNewArc()"><span class="icon">🚀</span><span class="label">Lancer une aventure</span><div class="hint">Campagne sérieuse ou session jeux du soir</div></button>
+      <button class="action-btn" onclick="openAvailModal(0)"><span class="icon">🗓️</span><span class="label">Mes dispos</span><div class="hint">Coche tes créneaux de la semaine</div></button>
     </div>
 
     <div class="card">
@@ -695,7 +732,9 @@ function viewSocial(){
     </div>
   </div>`;
 }
-function openMemberProfile(m){ SOCIAL_SEL = m; render(); }
+let SOC_WEEK = 0;
+function soWeek(o){ SOC_WEEK = Math.max(0, Math.min(3, o)); render(); }
+function openMemberProfile(m){ SOCIAL_SEL = m; SOC_WEEK = 0; render(); }
 function viewMemberProfile(m){
   const st = getProf(m).status;
   const myCamps = ARCS.filter(a=>(a.participants||[]).includes(m))
@@ -713,6 +752,15 @@ function viewMemberProfile(m){
         ${getProf(m).tagline?`<div class="game-meta" style="font-style:italic; color:var(--gold)">${esc(getProf(m).tagline)}</div>`:''}
         <div class="game-meta">${st ? esc(STATUS[st].label) : 'Statut non renseigné'}</div>
       </div>
+    </div>
+    <div class="card">
+      <div class="eyebrow">🗓️ Ses dispos</div>
+      <div class="week-nav">
+        <button class="mini-btn" ${SOC_WEEK<=0?'disabled':''} onclick="soWeek(${SOC_WEEK-1})">◀</button>
+        <b>Semaine du ${fmtDate(isoDate(mondayOf(SOC_WEEK)))}</b>
+        <button class="mini-btn" ${SOC_WEEK>=3?'disabled':''} onclick="soWeek(${SOC_WEEK+1})">▶</button>
+      </div>
+      ${weekGridHtml(SOC_WEEK, 'view')}
     </div>
     <div class="card">
       <div class="eyebrow">Ses campagnes</div>
@@ -772,6 +820,17 @@ function openAvatar(){
         ${COLORS.map(c=>`<button type="button" class="col-opt ${curCol===c?'sel':''}" data-c="${c}" style="background:${c}" title="${c}" onclick="pickColor(this)"></button>`).join('')}
       </div>
     </div>
+    <div class="field"><label>Mon ID Discord — pour les canaux privés et les boutons ✅/❌</label>
+      <input type="text" id="av-discord" value="${esc(getProf(ME).discordId||'')}" placeholder="Ex : 184405311681986560">
+      <div class="game-meta" style="margin-top:4px">Discord → Paramètres → Avancés → activer le Mode développeur, puis clic droit sur ton pseudo → « Copier l\u2019identifiant de l\u2019utilisateur ».</div>
+    </div>
+    <div class="field"><label>🔒 Verrouiller mes créneaux confirmés dans mon calendrier ?</label>
+      <div class="chips">
+        <button type="button" class="chip-opt ${getProf(ME).lockPref?'sel':''}" id="lock-yes" onclick="pickLock(true)">Oui</button>
+        <button type="button" class="chip-opt ${getProf(ME).lockPref?'':'sel'}" id="lock-no" onclick="pickLock(false)">Non</button>
+      </div>
+      <div class="game-meta" style="margin-top:4px">Si oui : répondre ✅ à un créneau réserve la case chez toi (🔒) et te rend indispo pour les autres campagnes sur ce créneau.</div>
+    </div>
     <div class="err" id="av-err"></div>
     <div class="modal-actions">
       ${(cur||curCol)?`<button class="btn" style="margin-right:auto" onclick="saveAvatar(null)">Tout réinitialiser</button>`:''}
@@ -787,6 +846,10 @@ function pickAvatar(btn){
   btn.parentElement.querySelectorAll('.avatar-opt').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
 }
+function pickLock(on){
+  document.getElementById('lock-yes').classList.toggle('sel', on);
+  document.getElementById('lock-no').classList.toggle('sel', !on);
+}
 async function saveAvatar(reset){
   const body = { member: ME };
   if(reset === null){
@@ -798,8 +861,11 @@ async function saveAvatar(reset){
     if(url) body.avatar = { type:'url', value:url };
     else if(sel) body.avatar = { type:'emoji', value: sel.dataset.a };
     if(col) body.color = col.dataset.c;
-    if(body.avatar === undefined && body.color === undefined)
-      return showErr('av-err','Choisis au moins un avatar ou une couleur.');
+    const did = (document.getElementById('av-discord')?.value || '').trim();
+    if(did === '') body.discordId = null;
+    else if(/^\d{15,21}$/.test(did)) body.discordId = did;
+    else return showErr('av-err','L\u2019ID Discord est une suite de 17-19 chiffres — vérifie ta copie.');
+    body.lockPref = document.getElementById('lock-yes')?.classList.contains('sel') || false;
   }
   await apiSend('/api/profile', 'POST', body);
   await loadAll();
@@ -876,11 +942,17 @@ function gameRow(g){
 
 /* ---------- Vue : Aventures ---------- */
 function viewAventures(){
-  const list = [...ARCS].sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const active = ARCS.filter(a=>a.status==='en cours').sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const done = ARCS.filter(a=>a.status!=='en cours')
+    .sort((a,b)=> new Date(b.endedAt||b.createdAt) - new Date(a.endedAt||a.createdAt));
   return `<div class="card">
-    <div class="eyebrow">Toutes les aventures du groupe</div>
-    ${list.length ? list.map(a=>arcCard(a, a.createdBy===ME)).join('') : '<div class="empty">Aucune aventure pour l\u2019instant. Le premier arc s\u2019écrit depuis « Mon espace ».</div>'}
-  </div>`;
+    <div class="eyebrow">Aventures en cours</div>
+    ${active.length ? active.map(a=>arcCard(a, a.createdBy===ME)).join('') : '<div class="empty">Aucune aventure en cours. Le prochain arc s\u2019écrit depuis « Mon espace ».</div>'}
+  </div>
+  ${done.length ? `<div class="card">
+    <div class="eyebrow">🏁 Aventures terminées</div>
+    ${done.map(a=>arcCard(a, a.createdBy===ME)).join('')}
+  </div>` : ''}`;
 }
 function arcCard(a, canDelete){
   const on = a.status === 'en cours';
@@ -892,7 +964,8 @@ function arcCard(a, canDelete){
   const g2 = a.multi ? null : arcGame(a);
   const og = (!img && g2) ? ogUrl(g2.link) : null;
   const fallback = a.multi ? '🎮' : esc((a.gameName||'?').charAt(0).toUpperCase());
-  return `<div class="arc2 ${on?'':'done'}">
+  const doneCls = on ? '' : (a.goal ? (a.goalDone ? 'done-win' : 'done-fail') : 'done');
+  return `<div class="arc2 ${doneCls}">
     <div class="arc2-img"${og?` data-og="${esc(og)}"`:''}><span class="arc2-fallback">${fallback}</span>${img?`<img src="${img}" alt="" loading="lazy" onerror="this.remove()">`:''}</div>
     <div class="arc2-body">
       ${canDelete ? `<button class="trash-btn" style="position:absolute; top:8px; right:8px; float:none;" title="Supprimer cette campagne" onclick="openDeleteArc('${a.id}')">🗑️</button>` : ''}
@@ -902,10 +975,31 @@ function arcCard(a, canDelete){
         <div class="arc2-info">
           <div class="arc-game">▸ ${a.multi?'🎮 ':''}${esc(a.gameName)}</div>
           ${a.goal?`<div class="arc2-goal">🎯 ${esc(a.goal)} ${a.goalDone?'<span style="color:var(--green)">✅ atteint</span>':''}${(a.participants||[]).includes(ME)?` <a class="game-meta" href="#" onclick="setGoal('${a.id}', ${a.goalDone?'false':'true'}); return false;">${a.goalDone?'(rouvrir)':'(marquer atteint !)'}</a>`:''}</div>`:''}
-          <div class="arc-meta" style="margin-top:5px">📅 ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}
+          <div class="arc-meta" style="margin-top:5px">📅 ${fmtDate(a.startDate)}${a.time?` à ${esc(a.time).replace(':','h')}`:''} · lancée par ${esc(a.createdBy)}${!on && a.endedAt ? ` · <b>terminée le ${fmtDate(a.endedAt)}</b>` : ''}
             ${canEnd?` · <a href="#" onclick="endArc('${a.id}'); return false;">terminer</a>`:''}
             ${canLeave?` · <a href="#" style="color:var(--coral)" onclick="leaveArc('${a.id}'); return false;">se retirer</a>`:''}</div>
           ${canJoin?`<button class="btn primary btn-join" onclick="joinArc('${a.id}')">➕ Rejoindre l'aventure (${n}/${a.slots})</button>`:''}
+          ${(() => {
+            const isCamp = !(a.multi || a.kind === 'session');
+            const isMember = (a.participants||[]).includes(ME);
+            const full = a.slots && n >= a.slots;
+            let extra = '';
+            if(on && isCamp && isMember) extra += `<button class="mini-btn" style="margin-top:8px" onclick="openPlan('${a.id}',0)">🗓️ Planifier</button>`;
+            if(on && isCamp && !isMember && full){
+              extra += a.requests?.[ME]
+                ? `<div class="arc-meta" style="margin-top:8px">⏳ Demande envoyée · <a href="#" onclick="cancelRequest('${a.id}'); return false;">retirer</a></div>`
+                : `<button class="mini-btn" style="margin-top:8px" onclick="requestJoin('${a.id}')">🙋 Demander à rejoindre</button>`;
+            }
+            if(on && isCamp && isMember && a.requests && Object.keys(a.requests).length){
+              extra += Object.entries(a.requests).map(([who,rq])=>`
+                <div class="arc-meta" style="margin-top:8px">🙋 <b>${esc(who)}</b> veut rejoindre — ${
+                  (rq.refusals||[]).includes(ME)
+                    ? 'ton refus est enregistré'
+                    : `<a href="#" style="color:var(--green)" onclick="decideRequest('${a.id}','${esc(who)}',true); return false;">accepter</a> · <a href="#" style="color:var(--coral)" onclick="decideRequest('${a.id}','${esc(who)}',false); return false;">refuser</a>`
+                }</div>`).join('');
+            }
+            return extra;
+          })()}
         </div>
       </div>
     </div>
@@ -1310,6 +1404,151 @@ async function saveArc(kind){
   await loadAll();
   toast(kind==='session' ? 'Soir\u00e9e annonc\u00e9e \u2014 pas de retard ! \uD83C\uDF89' : 'Campagne lanc\u00e9e \uD83D\uDE80');
   closeModal(); render();
+}
+
+/* ==================== DISPOS, HEATMAP & CRENEAUX ==================== */
+function mondayOf(offset){ const d=new Date(); const wd=(d.getDay()+6)%7; d.setDate(d.getDate()-wd+(offset||0)*7); return d; }
+function isoDate(d){ return d.toISOString().slice(0,10); }
+function addDaysIso(mon, n){ const x=new Date(mon); x.setDate(x.getDate()+n); return isoDate(x); }
+function availOf(member, day, slot){ return AVAIL.find(a=>a.member===member && a.day===day && a.slot===slot) || null; }
+
+/* Grille d'une semaine — mode 'edit' (ma grille), 'view' (celle d'un ami), 'heat' (heatmap de campagne) */
+function weekGridHtml(offset, mode, arcId){
+  const mon = mondayOf(offset);
+  const today = todayStr();
+  const days = Array.from({length:7},(_,i)=> addDaysIso(mon, i));
+  const arc = arcId ? ARCS.find(a=>a.id===arcId) : null;
+  const team = arc ? (arc.participants||[]) : [];
+  const head = '<tr><th></th>' + days.map((d,i)=>{ const dt=new Date(d);
+    return `<th>${DAY_LAB[i]}<span class="dnum">${dt.getDate()}/${String(dt.getMonth()+1).padStart(2,'0')}</span></th>`; }).join('') + '</tr>';
+  const rows = DAY_SLOTS.map(sl => '<tr><td class="rowlabel">'+SLOT_LAB[sl]+'</td>' + days.map(d=>{
+    const past = d < today;
+    if(mode === 'heat'){
+      const free = team.filter(m=>{ const a=availOf(m,d,sl); return a && (a.state==='free' || (a.state==='locked' && a.arc_id===arcId)); });
+      const planned = SLOTS_DATA.find(s=>s.arcId===arcId && s.day===d && s.slot===sl);
+      const alpha = team.length ? free.length/team.length : 0;
+      const bg = free.length ? ` style="background:rgba(74,222,128,${(0.15+alpha*0.65).toFixed(2)}); border-color:rgba(74,222,128,.4)"` : '';
+      const t = free.length ? `${free.length}/${team.length} dispo : ${free.join(', ')}` : 'Personne de dispo';
+      return `<td class="${past?'cell-past':''}"${bg} title="${esc(t)}"${past?'':` onclick="openCreateSlot('${arcId}','${d}','${sl}')"`}>${planned?'\uD83D\uDCCC':(free.length||'')}</td>`;
+    }
+    const who = mode==='view' ? SOCIAL_SEL : ME;
+    const a = availOf(who, d, sl);
+    const locked = a && a.state==='locked';
+    const free = a && a.state==='free';
+    const cls = past ? 'cell-past' : locked ? 'cell-locked' : free ? 'cell-free' : '';
+    const lockedArc = locked ? (ARCS.find(x=>x.id===a.arc_id)?.name || 'campagne') : '';
+    const click = (mode==='edit' && !past && !locked) ? ` onclick="toggleAvail('${d}','${sl}',this)"` : '';
+    return `<td class="${cls}"${locked?` title="\uD83D\uDD12 ${esc(lockedArc)}"`:''}${click}>${locked?'\uD83D\uDD12':(free?'\u2713':'')}</td>`;
+  }).join('') + '</tr>').join('');
+  return `<table class="week-grid">${head}${rows}</table>`;
+}
+
+let AV_WEEK = 0;
+function openAvailModal(offset){
+  AV_WEEK = Math.max(0, Math.min(3, offset === undefined ? AV_WEEK : offset));
+  const mon = mondayOf(AV_WEEK);
+  openModal(`
+    <h2>\uD83D\uDDD3\uFE0F Mes dispos</h2>
+    <div class="sub">Clique sur les cases o\u00f9 tu es dispo pour jouer. \uD83D\uDD12 = cr\u00e9neau confirm\u00e9 pour une campagne (il se lib\u00e8re si tu r\u00e9ponds \u274c au cr\u00e9neau).</div>
+    <div class="week-nav">
+      <button class="mini-btn" ${AV_WEEK<=0?'disabled':''} onclick="openAvailModal(${AV_WEEK-1})">\u25c0</button>
+      <b>Semaine du ${fmtDate(isoDate(mon))}</b>
+      <button class="mini-btn" ${AV_WEEK>=3?'disabled':''} onclick="openAvailModal(${AV_WEEK+1})">\u25b6</button>
+    </div>
+    ${weekGridHtml(AV_WEEK,'edit')}
+    <div class="modal-actions"><button class="btn primary" onclick="closeModal()">C\u2019est not\u00e9 \u2713</button></div>`);
+}
+async function toggleAvail(day, slot, td){
+  const a = availOf(ME, day, slot);
+  const on = !(a && a.state==='free');
+  if(on){ AVAIL.push({member:ME, day, slot, state:'free', arc_id:null}); }
+  else { AVAIL = AVAIL.filter(x=>!(x.member===ME&&x.day===day&&x.slot===slot)); }
+  td.className = on ? 'cell-free' : ''; td.textContent = on ? '\u2713' : '';
+  try{ await apiSend('/api/avail','POST',{member:ME, day, slot, on}); }
+  catch(e){ await loadAll(); openAvailModal(AV_WEEK); }
+}
+
+/* Heatmap + cr\u00e9neaux d'une campagne */
+let PLAN_WEEK = 0;
+function openPlan(arcId, offset){
+  const arc = ARCS.find(a=>a.id===arcId); if(!arc) return;
+  PLAN_WEEK = Math.max(0, Math.min(3, offset || 0));
+  const mon = mondayOf(PLAN_WEEK);
+  const today = todayStr();
+  const upcoming = SLOTS_DATA.filter(s=>s.arcId===arcId && s.day>=today)
+    .sort((a,b)=> a.day.localeCompare(b.day) || DAY_SLOTS.indexOf(a.slot)-DAY_SLOTS.indexOf(b.slot));
+  openModal(`
+    <h2>\uD83D\uDDD3\uFE0F Planifier \u2014 ${esc(arc.name)}</h2>
+    <div class="sub">Les dispos superpos\u00e9es de ${esc(joinFrF(arc.participants||[]))} : plus c\u2019est vert fonc\u00e9, plus vous \u00eates nombreux. Clique une case pour proposer un cr\u00e9neau (3 max \u00e0 venir).</div>
+    <div class="week-nav">
+      <button class="mini-btn" ${PLAN_WEEK<=0?'disabled':''} onclick="openPlan('${arcId}',${PLAN_WEEK-1})">\u25c0</button>
+      <b>Semaine du ${fmtDate(isoDate(mon))}</b>
+      <button class="mini-btn" ${PLAN_WEEK>=3?'disabled':''} onclick="openPlan('${arcId}',${PLAN_WEEK+1})">\u25b6</button>
+    </div>
+    ${weekGridHtml(PLAN_WEEK,'heat',arcId)}
+    <div class="eyebrow" style="margin-top:16px">Cr\u00e9neaux \u00e0 venir</div>
+    ${upcoming.length ? upcoming.map(s=>{
+      const my = s.responses?.[ME];
+      const yes = Object.entries(s.responses||{}).filter(([,v])=>v==='yes').map(([m])=>m);
+      const no = Object.entries(s.responses||{}).filter(([,v])=>v==='no').map(([m])=>m);
+      return `<div class="rate-item">
+        <div class="rate-head"><b>\uD83D\uDCCC ${fmtDate(s.day)} \u00b7 ${SLOT_LAB[s.slot]}</b><span class="game-meta">propos\u00e9 par ${esc(s.createdBy)}</span></div>
+        <div class="game-meta" style="margin-top:4px">\u2705 ${yes.length?yes.map(m=>pchip(m)).join(''):'\u2014'} &nbsp;&nbsp; \u274c ${no.length?no.map(m=>pchip(m)).join(''):'\u2014'}</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="mini-btn" style="${my==='yes'?'border-color:var(--green); color:var(--green);':''}" onclick="respondSlot('${s.id}','yes','${arcId}')">\u2705 J\u2019y serai</button>
+          <button class="mini-btn" style="${my==='no'?'border-color:var(--coral); color:var(--coral);':''}" onclick="respondSlot('${s.id}','no','${arcId}')">\u274c Pas dispo</button>
+          <button class="mini-btn danger" onclick="deleteSlot('${s.id}','${arcId}')">\uD83D\uDDD1\uFE0F</button>
+        </div>
+      </div>`;}).join('') : '<div class="empty">Aucun cr\u00e9neau pos\u00e9. La heatmap n\u2019attend que toi.</div>'}
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Fermer</button></div>`);
+}
+function openCreateSlot(arcId, day, slot){
+  const arc = ARCS.find(a=>a.id===arcId); if(!arc) return;
+  openModal(`
+    <h2>Poser un cr\u00e9neau ?</h2>
+    <div class="sub">\u00ab ${esc(arc.name)} \u00bb \u2014 <b>${fmtDate(day)} \u00b7 ${SLOT_LAB[slot]}</b>.<br>La notif partira ${arc.channelId?'dans votre canal priv\u00e9':'sur Discord'} avec les boutons \u2705/\u274c, et tu es compt\u00e9 partant d\u2019office.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="openPlan('${arcId}',${PLAN_WEEK})">Retour</button>
+      <button class="btn primary" onclick="createSlot('${arcId}','${day}','${slot}')">Poser le cr\u00e9neau \uD83D\uDCCC</button>
+    </div>`);
+}
+async function createSlot(arcId, day, slot){
+  const r = await apiSend('/api/slots','POST',{arcId, day, slot, member:ME});
+  await loadAll();
+  if(r.ok) toast('Cr\u00e9neau pos\u00e9 \u2014 Discord est pr\u00e9venu \uD83D\uDCCC');
+  else if(r.reason==='max') toast('D\u00e9j\u00e0 3 cr\u00e9neaux \u00e0 venir sur cette campagne !');
+  else if(r.reason==='dup') toast('Ce cr\u00e9neau existe d\u00e9j\u00e0 \uD83D\uDE09');
+  openPlan(arcId, PLAN_WEEK); render();
+}
+async function respondSlot(id, ans, arcId){
+  await apiSend('/api/slots/'+id+'/respond','POST',{member:ME, answer:ans});
+  await loadAll();
+  toast(ans==='yes'?'Pr\u00e9sence confirm\u00e9e \u2705':'Bien not\u00e9 \u274c');
+  openPlan(arcId, PLAN_WEEK); render();
+}
+async function deleteSlot(id, arcId){
+  await apiSend('/api/slots/'+id+'?member='+encodeURIComponent(ME), 'DELETE');
+  await loadAll();
+  toast('Cr\u00e9neau annul\u00e9');
+  openPlan(arcId, PLAN_WEEK); render();
+}
+
+/* ==================== DEMANDES D'ADHESION ==================== */
+async function requestJoin(id){
+  const r = await apiSend('/api/arcs/'+id+'/request','POST',{member:ME});
+  await loadAll();
+  toast(r.ok ? 'Demande envoy\u00e9e \uD83D\uDE4B \u2014 un seul \u00ab oui \u00bb suffit !' : 'Demande impossible');
+  render();
+}
+async function cancelRequest(id){
+  await apiSend('/api/arcs/'+id+'/request/cancel','POST',{member:ME});
+  await loadAll(); toast('Demande retir\u00e9e'); render();
+}
+async function decideRequest(id, who, accept){
+  await apiSend('/api/arcs/'+id+'/request/decide','POST',{applicant:who, by:ME, accept});
+  await loadAll();
+  toast(accept ? 'Bienvenue \u00e0 '+who+' ! \uD83C\uDF89' : 'Refus enregistr\u00e9');
+  render();
 }
 
 /* ---------- Autocomplétion Steam ---------- */
