@@ -127,6 +127,10 @@
   .steam-pop .sp-name{font-weight:800; font-size:14.5px;}
   .steam-pop .sp-desc{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.45;}
   .steam-pop .sp-meta{margin-top:7px; display:flex; gap:5px; flex-wrap:wrap; align-items:center;}
+  .avatar-pop{position:fixed; z-index:300; background:var(--panel); border:1px solid var(--accent); border-radius:14px; padding:14px 18px; text-align:center; box-shadow:0 14px 40px rgba(0,0,0,.6); pointer-events:none; animation:toastin .15s ease;}
+  .avatar-pop-circle{width:190px; height:190px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; margin:0 auto;}
+  .avatar-pop-name{font-weight:800; margin-top:9px; font-size:15.5px;}
+  .avatar-pop-tag{font-style:italic; color:var(--gold); font-size:12.5px; margin-top:2px;}
 
   /* ===== Arc cards ===== */
   .arc{background:var(--panel2); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
@@ -152,8 +156,8 @@
   .arc2-title{font-weight:800; font-size:17.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-right:28px;}
   .arc2-cols{display:flex; gap:16px; margin-top:9px; flex-wrap:wrap;}
   .arc2-people{display:flex; flex-wrap:wrap; align-content:flex-start; max-width:150px; padding-left:9px;}
-  .arc2-people .pdot{width:80px; height:80px; font-size:13px; border:2px solid var(--panel2); margin-left:-30px; margin-bottom:3px;}
-  .arc2-people .pemoji{font-size:55px;}
+  .arc2-people .pdot{width:36px; height:36px; font-size:13px; border:2px solid var(--panel2); margin-left:-10px; margin-bottom:3px;}
+  .arc2-people .pemoji{font-size:20px;}
   .arc2-info{flex:1; min-width:190px;}
   .arc2-goal{font-size:14.5px; font-weight:650; margin-top:5px;}
   .btn-join{margin-top:10px; padding:9px 20px; font-size:14.5px;}
@@ -338,7 +342,7 @@ function pdotHtml(name, size){
   if(p.avatar?.type === 'emoji') inner = `<span class="pemoji">${esc(p.avatar.value)}</span>`;
   else if(p.avatar?.type === 'url') inner = `<img class="avatar-img" src="${esc(p.avatar.value)}" alt="${esc(initials(name))}" onerror="this.remove()">`;
   const cls = size === 'xl' ? 'xl' : size === 'md' ? 'md' : size ? 'big' : '';
-  return `<span class="pdot ${cls}" style="background:${memberColor(name)}">${inner}</span>`;
+  return `<span class="pdot ${cls}" data-member="${esc(name)}" style="background:${memberColor(name)}">${inner}</span>`;
 }
 function statusDot(name){
   const st = getProf(name).status;
@@ -1272,6 +1276,36 @@ async function showSteamPop(id, anchor){
   }catch(e){ /* aperçu indisponible : le lien reste cliquable */ }
 }
 function hideSteamPop(){ if(POP_EL){ POP_EL.remove(); POP_EL = null; } }
+
+/* ---------- Avatar en grand au survol des pastilles de profil ---------- */
+let AV_EL = null, AV_TIMER = null;
+document.addEventListener('mouseover', e => {
+  const d = e.target.closest ? e.target.closest('.pdot[data-member]') : null;
+  if(!d) return;
+  clearTimeout(AV_TIMER);
+  AV_TIMER = setTimeout(()=> showAvatarPop(d.getAttribute('data-member'), d), 300);
+});
+document.addEventListener('mouseout', e => {
+  if(e.target.closest && e.target.closest('.pdot[data-member]')){ clearTimeout(AV_TIMER); hideAvatarPop(); }
+});
+function showAvatarPop(name, anchor){
+  if(!name || !document.body.contains(anchor)) return;
+  hideAvatarPop();
+  const p = getProf(name);
+  let inner = `<span style="font-size:64px; font-weight:800; color:#0F1118">${esc(initials(name))}</span>`;
+  if(p.avatar?.type === 'emoji') inner = `<span style="font-size:110px; line-height:1">${esc(p.avatar.value)}</span>`;
+  else if(p.avatar?.type === 'url') inner = `<img src="${esc(p.avatar.value)}" alt="" style="width:100%; height:100%; object-fit:cover" onerror="this.remove()">`;
+  const rect = anchor.getBoundingClientRect();
+  AV_EL = document.createElement('div');
+  AV_EL.className = 'avatar-pop';
+  AV_EL.style.top = Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 290)) + 'px';
+  AV_EL.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 250)) + 'px';
+  AV_EL.innerHTML = `<div class="avatar-pop-circle" style="background:${memberColor(name)}">${inner}</div>
+    <div class="avatar-pop-name">${esc(name)} ${statusDot(name)}</div>
+    ${p.tagline?`<div class="avatar-pop-tag">${esc(p.tagline)}</div>`:''}`;
+  document.body.appendChild(AV_EL);
+}
+function hideAvatarPop(){ if(AV_EL){ AV_EL.remove(); AV_EL = null; } }
 async function showOgPop(url, anchor){
   try{
     let d = OG_CACHE[url];
