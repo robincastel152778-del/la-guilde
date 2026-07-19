@@ -1419,8 +1419,8 @@ function weekGridHtml(offset, mode, arcId){
   const days = Array.from({length:7},(_,i)=> addDaysIso(mon, i));
   const arc = arcId ? ARCS.find(a=>a.id===arcId) : null;
   const team = arc ? (arc.participants||[]) : [];
-  const head = '<tr><th></th>' + days.map((d,i)=>{ const dt=new Date(d);
-    return `<th>${DAY_LAB[i]}<span class="dnum">${dt.getDate()}/${String(dt.getMonth()+1).padStart(2,'0')}</span></th>`; }).join('') + '</tr>';
+  const head = '<tr><th></th>' + days.map((d,i)=>{ const [Y,Mo,Da]=d.split('-');
+    return `<th>${DAY_LAB[i]}<span class="dnum">${Da}/${Mo}</span></th>`; }).join('') + '</tr>';
   const rows = DAY_SLOTS.map(sl => '<tr><td class="rowlabel">'+SLOT_LAB[sl]+'</td>' + days.map(d=>{
     const past = d < today;
     if(mode === 'heat'){
