@@ -568,6 +568,42 @@ app.get('/api/steam/app/:id', async (req, res) => {
   } catch (e) { res.status(502).json({ error: 'steam' }); }
 });
 
+/* Aperçu d'une page de boutique HORS Steam (Epic, GOG, Instant Gaming…)
+   On lit les balises Open Graph de la page (image, titre, description),
+   celles-là mêmes qui servent aux aperçus Discord. Liste blanche de
+   domaines : le serveur ne peut pas être détourné pour visiter autre chose. */
+const PREVIEW_HOSTS = ['store.epicgames.com', 'www.gog.com', 'gog.com', 'www.instant-gaming.com', 'instant-gaming.com'];
+function ogTag(html, prop) {
+  const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']og:${prop}["'][^>]*content=["']([^"']+)["']`, 'i'))
+        || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']og:${prop}["']`, 'i'));
+  return m ? m[1].replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, '\u2019').replace(/&quot;/g, '"') : '';
+}
+app.get('/api/preview', async (req, res) => {
+  try {
+    const u = new URL(String(req.query.url || ''));
+    if (u.protocol !== 'https:' || !PREVIEW_HOSTS.includes(u.hostname)) return res.status(400).json({ error: 'host' });
+    const key = 'og:' + u.href;
+    const hit = steamCache.get(key);
+    if (hit && Date.now() - hit.t < 6 * 60 * 60 * 1000) return res.json(hit.v);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    try {
+      const r = await fetch(u.href, {
+        signal: ctrl.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+          'Accept-Language': 'fr'
+        }
+      });
+      if (!r.ok) throw new Error('page ' + r.status);
+      const html = (await r.text()).slice(0, 400000); // on ne lit que le début, les balises og y sont
+      const v = { img: ogTag(html, 'image'), name: ogTag(html, 'title'), desc: ogTag(html, 'description') };
+      steamCache.set(key, { t: Date.now(), v });
+      res.json(v);
+    } finally { clearTimeout(timer); }
+  } catch (e) { res.status(502).json({ error: 'preview' }); }
+});
+
 /* ---------- Le bilan mensuel ----------
    Le serveur gratuit dort quand personne ne l'utilise : le bilan part donc
    à la PREMIÈRE visite de l'appli après le 1er du mois, et une seule fois.
