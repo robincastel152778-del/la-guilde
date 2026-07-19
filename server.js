@@ -172,11 +172,12 @@ app.post('/api/members', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
-/* Mettre à jour son profil : statut de dispo et/ou avatar
-   { member, status: 'green'|'orange'|'red'|null, avatar: {type:'emoji'|'url', value}|null } */
+/* Mettre à jour son profil : statut de dispo, avatar, couleur et/ou punchline
+   { member, status, avatar, color, tagline } */
+const TAGLINES = ['Rage quit imminent', 'AFK professionnel', '300h de jeu, toujours nul', '« Une dernière et j\u2019arrête »', 'Delu et le sait'];
 app.post('/api/profile', async (req, res) => {
   try {
-    const { member, status, avatar } = req.body || {};
+    const { member, status, avatar, color, tagline } = req.body || {};
     if (!isStr(member, 40) || !member) return res.status(400).json({ error: 'invalid' });
     const row = (await pool.query(`SELECT value FROM meta WHERE key='profiles'`)).rows[0];
     const profiles = row?.value ?? {};
@@ -187,6 +188,10 @@ app.post('/api/profile', async (req, res) => {
     else if (avatar && typeof avatar === 'object' && ['emoji', 'url'].includes(avatar.type) && isStr(avatar.value, 400) && avatar.value) {
       p.avatar = { type: avatar.type, value: avatar.value };
     }
+    if (color === null) delete p.color;
+    else if (isStr(color, 9) && /^#[0-9a-fA-F]{6}$/.test(color)) p.color = color;
+    if (tagline === null) delete p.tagline;
+    else if (TAGLINES.includes(tagline)) p.tagline = tagline;
     profiles[member] = p;
     await pool.query(
       `INSERT INTO meta (key, value) VALUES ('profiles', $1) ON CONFLICT (key) DO UPDATE SET value=$1`,
