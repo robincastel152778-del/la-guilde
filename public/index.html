@@ -1407,7 +1407,7 @@ async function saveArc(kind){
 }
 
 /* ==================== DISPOS, HEATMAP & CRENEAUX ==================== */
-function mondayOf(offset){ const d=new Date(); const wd=(d.getDay()+6)%7; d.setDate(d.getDate()-wd+(offset||0)*7); return d; }
+function mondayOf(offset){ const d=new Date(); d.setHours(12,0,0,0); const wd=(d.getDay()+6)%7; d.setDate(d.getDate()-wd+(offset||0)*7); return d; }
 function isoDate(d){ return d.toISOString().slice(0,10); }
 function addDaysIso(mon, n){ const x=new Date(mon); x.setDate(x.getDate()+n); return isoDate(x); }
 function availOf(member, day, slot){ return AVAIL.find(a=>a.member===member && a.day===day && a.slot===slot) || null; }
