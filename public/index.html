@@ -444,6 +444,7 @@ async function init(){
   }
   startLive();
   render();
+  if(needDispoPrompt()) setTimeout(openDispoPrompt, 700);
 }
 let ES = null;
 function startLive(){
@@ -525,7 +526,7 @@ async function addMember(){
   pickProfile(name);
   toast('Bienvenue dans La Guilde, ' + name + ' ! 👋');
 }
-function pickProfile(name){ ME=name; saveProfile(name); render(); }
+function pickProfile(name){ ME=name; saveProfile(name); render(); if(needDispoPrompt()) setTimeout(openDispoPrompt, 500); }
 
 /* ---------- Vue : Panneau général ---------- */
 function viewPanneau(){
@@ -1411,6 +1412,9 @@ function mondayOf(offset){ const d=new Date(); d.setHours(12,0,0,0); const wd=(d
 function isoDate(d){ return d.toISOString().slice(0,10); }
 function addDaysIso(mon, n){ const x=new Date(mon); x.setDate(x.getDate()+n); return isoDate(x); }
 function availOf(member, day, slot){ return AVAIL.find(a=>a.member===member && a.day===day && a.slot===slot) || null; }
+/* Heure de fin de chaque tranche : une tranche passée aujourd'hui est grisée */
+const SLOT_END = { matin:12, aprem:18, '18-20':20, '20-22':22, '22-00':24, '00-02':26 };
+function slotPast(d, sl, today){ return d < today || (d === today && new Date().getHours() >= SLOT_END[sl]); }
 
 /* Grille d'une semaine — mode 'edit' (ma grille), 'view' (celle d'un ami), 'heat' (heatmap de campagne) */
 function weekGridHtml(offset, mode, arcId){
@@ -1422,7 +1426,7 @@ function weekGridHtml(offset, mode, arcId){
   const head = '<tr><th></th>' + days.map((d,i)=>{ const [Y,Mo,Da]=d.split('-');
     return `<th>${DAY_LAB[i]}<span class="dnum">${Da}/${Mo}</span></th>`; }).join('') + '</tr>';
   const rows = DAY_SLOTS.map(sl => '<tr><td class="rowlabel">'+SLOT_LAB[sl]+'</td>' + days.map(d=>{
-    const past = d < today;
+    const past = slotPast(d, sl, today);
     if(mode === 'heat'){
       const free = team.filter(m=>{ const a=availOf(m,d,sl); return a && (a.state==='free' || (a.state==='locked' && a.arc_id===arcId)); });
       const planned = SLOTS_DATA.find(s=>s.arcId===arcId && s.day===d && s.slot===sl);
@@ -1444,6 +1448,32 @@ function weekGridHtml(offset, mode, arcId){
 }
 
 let AV_WEEK = 0;
+/* ---------- Rappel hebdomadaire des dispos ----------
+   À chaque connexion, tant que la semaine n'a pas été validée, l'agenda
+   s'ouvre tout seul. Le dimanche, on prépare déjà la semaine suivante. */
+function dispoTargetMonday(){ return new Date().getDay() === 0 ? mondayOf(1) : mondayOf(0); }
+function needDispoPrompt(){
+  if(!ME) return false;
+  try{ return localStorage.getItem('guilde:dispoDone:'+ME) !== isoDate(dispoTargetMonday()); }
+  catch(e){ return false; }
+}
+function openDispoPrompt(){
+  const target = dispoTargetMonday();
+  const offset = new Date().getDay() === 0 ? 1 : 0;
+  openModal(`
+    <h2>🗓️ Tes dispos de la semaine !</h2>
+    <div class="sub">Coche les créneaux où tu pourras jouer cette semaine (du ${fmtDate(isoDate(target))}). C\u2019est ce qui alimente les heatmaps de campagne — l\u2019équipe compte sur toi.</div>
+    ${weekGridHtml(offset,'edit')}
+    <div class="modal-actions" style="justify-content:space-between; align-items:center;">
+      <a href="#" class="game-meta" style="font-size:12px" onclick="closeModal(); return false;">Je remplirai plus tard</a>
+      <button class="btn primary" style="padding:11px 24px; font-size:15px;" onclick="validateDispos('${isoDate(target)}')">Je valide mes dispos !</button>
+    </div>`);
+}
+function validateDispos(weekIso){
+  try{ localStorage.setItem('guilde:dispoDone:'+ME, weekIso); }catch(e){}
+  toast('Dispos validées 💪');
+  closeModal();
+}
 function openAvailModal(offset){
   AV_WEEK = Math.max(0, Math.min(3, offset === undefined ? AV_WEEK : offset));
   const mon = mondayOf(AV_WEEK);
