@@ -138,7 +138,11 @@ if (BOT_TOKEN && GUILD_ID) {
   try {
     DJS = require('discord.js');
     bot = new DJS.Client({ intents: [DJS.GatewayIntentBits.Guilds] });
-    bot.once('ready', () => { botReady = true; console.log('Bot Discord connecté : ' + bot.user.tag); });
+    bot.once('ready', () => {
+      botReady = true;
+      console.log('Bot Discord connecté : ' + bot.user.tag);
+      setTimeout(catchUpChannels, 3000); // crée les canaux manquants des campagnes déjà complètes
+    });
     bot.on('interactionCreate', onDiscordInteraction);
     bot.login(BOT_TOKEN).catch(e => console.error('Connexion bot Discord impossible :', e.message));
   } catch (e) { console.error('discord.js indisponible :', e.message); }
@@ -162,9 +166,16 @@ async function ensureArcChannel(arcId) {
       { id: guild.roles.everyone.id, deny: [DJS.PermissionFlagsBits.ViewChannel] },
       { id: bot.user.id, allow: [DJS.PermissionFlagsBits.ViewChannel, DJS.PermissionFlagsBits.SendMessages] }
     ];
+    // Résolution robuste : on vérifie que chaque ID est bien un membre du serveur
     for (const m of (arc.participants || [])) {
       const did = profiles[m]?.discordId;
-      if (validDiscordId(did)) overwrites.push({ id: did, allow: [DJS.PermissionFlagsBits.ViewChannel, DJS.PermissionFlagsBits.SendMessages] });
+      if (!validDiscordId(did)) continue;
+      try {
+        await guild.members.fetch(did); // lève une erreur si l'ID n'est pas un membre
+        overwrites.push({ id: did, allow: [DJS.PermissionFlagsBits.ViewChannel, DJS.PermissionFlagsBits.SendMessages] });
+      } catch (e) {
+        console.error(`ID Discord invalide pour ${m} (${did}) — ignoré. Vérifie qu'il a bien copié SON identifiant utilisateur.`);
+      }
     }
     const ch = await guild.channels.create({
       name: slugChannel(arc.name),
@@ -179,14 +190,25 @@ async function ensureArcChannel(arcId) {
     return ch.id;
   } catch (e) { console.error('Création du canal de campagne impossible :', e.message); return null; }
 }
-/* Crée le canal quand une campagne (pas une session) atteint son effectif complet */
+/* Crée le canal quand une campagne (pas une session) est au complet :
+   soit l'effectif visé est atteint, soit l'équipe est fixe (pas de places
+   ouvertes) avec au moins 2 joueurs. */
 async function maybeCreateChannel(arcId) {
   try {
     const arc = await getArc(arcId);
     if (!arc || arc.status !== 'en cours' || arc.channelId) return;
     if (arc.kind === 'session' || arc.multi === true) return;
-    if (arc.slots && (arc.participants || []).length >= arc.slots) await ensureArcChannel(arcId);
+    const n = (arc.participants || []).length;
+    const full = arc.slots ? n >= arc.slots : n >= 2;
+    if (full) await ensureArcChannel(arcId);
   } catch (e) { console.error(e); }
+}
+/* Au démarrage du bot : rattrapage des campagnes complètes sans canal */
+async function catchUpChannels() {
+  try {
+    const arcs = (await pool.query(`SELECT data FROM arcs`)).rows.map(r => r.data);
+    for (const a of arcs) await maybeCreateChannel(a.id);
+  } catch (e) { console.error('Rattrapage des canaux :', e.message); }
 }
 async function addMemberToChannel(arc, member) {
   if (!botReady || !arc || !arc.channelId) return;
@@ -194,6 +216,9 @@ async function addMemberToChannel(arc, member) {
     const profiles = await getProfiles();
     const did = profiles[member]?.discordId;
     if (!validDiscordId(did)) return;
+    const guild = await bot.guilds.fetch(GUILD_ID);
+    try { await guild.members.fetch(did); }
+    catch (e) { console.error(`ID Discord invalide pour ${member} (${did}) — non ajouté au canal.`); return; }
     const ch = await bot.channels.fetch(arc.channelId);
     await ch.permissionOverwrites.edit(did, { ViewChannel: true, SendMessages: true });
     await ch.send(`👋 **${member}** rejoint le canal — bienvenue !`);
