@@ -94,6 +94,16 @@
     const s = STATE.shop;
     const cards = s.slots.map(it => itemCard(it, 'shop')).join('');
     const usedCoupon = s.rerolled;
+    const nbCat = (CATALOGUE && CATALOGUE.items) ? CATALOGUE.items.length : 0;
+    const nbVente = (CATALOGUE && CATALOGUE.items) ? CATALOGUE.items.filter(i => i.price > 0).length : 0;
+    const emptyMsg = s.slots.length ? '' :
+      `<div class="ge-empty"><b>Aucun objet en vente.</b><br><br>
+       Diagnostic : <b>${nbCat}</b> objets lus dans <code>catalogue.json</code>,
+       dont <b>${nbVente}</b> avec un prix &gt; 0.<br><br>
+       ${nbCat === 0
+         ? 'Le fichier <code>catalogue.json</code> est absent de la racine du repo, ou sa syntaxe est invalide.'
+         : 'Les objets n\'ont pas de prix : remplis le champ <code>prix</code> dans <code>catalogue.json</code>.'}
+       </div>`;
     return `
       <div class="ge-shop-head">
         <div class="ge-legend">
@@ -103,8 +113,10 @@
           🎟️ Coupon de reset journalier · ${s.cost} GP
         </button>
       </div>
+      ${emptyMsg}
       <div class="ge-grid">${cards}</div>
-      <div class="ge-foot">Le shop se réinitialise chaque jour. Les objets déjà possédés n'y réapparaissent pas.</div>`;
+      <div class="ge-foot">Le shop se réinitialise chaque jour. Les objets déjà possédés n'y réapparaissent pas.
+        <span style="opacity:.5"> · boutique.js v2</span></div>`;
   }
 
   function renderOwned(){
@@ -281,6 +293,8 @@
     .ge-locked{opacity:.6;} .ge-cat{font-family:'Silkscreen',monospace;font-size:13px;color:#FFC857;margin:20px 0 8px;}
     .ge-rowlabel{font-family:'Silkscreen',monospace;font-size:9px;letter-spacing:1px;margin:6px 0 8px;}
     .ge-foot{color:#8A90A6;font-size:12px;margin-top:8px;}
+    .ge-empty{background:#1D2130;border:1px solid #FF6B8155;border-radius:12px;padding:18px;color:#C9CEDE;font-size:13.5px;line-height:1.6;}
+    .ge-empty code{background:#0F1118;border:1px solid #262B3B;border-radius:5px;padding:1px 6px;color:#FFC857;}
     #ge-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);z-index:9999;
       background:#1D2130;border:1px solid #262B3B;color:#E9EBF5;padding:10px 18px;border-radius:10px;font:700 13px 'Outfit';
       opacity:0;transition:.25s;pointer-events:none;} #ge-toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -322,7 +336,7 @@
   }
 
   // ---------- boot ----------
-  function boot(){ ensureStyle(); mountWallet(); }
+  function boot(){ console.log('[La Guilde] boutique.js v2 chargé'); ensureStyle(); mountWallet(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
