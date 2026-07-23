@@ -251,8 +251,17 @@
   .pdot-wrap{position:relative; display:inline-flex; flex-shrink:0; vertical-align:middle;}
   .pdot-wrap .pdot-frame{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
     width:205%; height:205%; pointer-events:none; z-index:2;}
-  .profile-banner{height:150px; border-radius:14px 14px 0 0; background-size:cover; background-position:center;
-    margin-bottom:-58px; position:relative;}
+  /* L'avatar ne porte plus de marge : elle passe sur l'enveloppe, sinon le cadre se décale */
+  .pdot-wrap .pdot{margin:0 !important;}
+  /* Pile de participants : un cadre mesure 2,05× l'avatar, il lui faut de la place */
+  .arc2-people{max-width:292px; padding-left:18px;}
+  .arc2-people .pdot-wrap{margin-left:-18px; margin-bottom:6px;}
+  .arc2-people .pdot-wrap.framed{width:94px; height:94px; align-items:center; justify-content:center;
+    margin-left:-10px; margin-bottom:0;}
+  .arc2-people .pdot-wrap.framed .pdot{width:46px !important; height:46px !important; font-size:16px;}
+  .arc2-people .pdot-wrap.framed .pemoji{font-size:30px;}
+  .profile-banner{height:clamp(170px, 19vw, 280px); border-radius:14px 14px 0 0;
+    background-size:cover; background-position:center; margin-bottom:-58px; position:relative;}
   .profile-banner::after{content:""; position:absolute; inset:0; border-radius:14px 14px 0 0;
     background:linear-gradient(180deg,transparent 35%,var(--panel) 96%);}
   .card.has-banner{position:relative; z-index:1; background:transparent; border-top:none;
@@ -542,8 +551,9 @@ function pdotHtml(name, size, zoom){
   const cls = size === 'xl' ? 'xl' : size === 'md' ? 'md' : size ? 'big' : '';
   const dot = `<span class="pdot ${cls}" data-member="${esc(name)}"${zoom?' data-zoom="1" style="cursor:zoom-in; background:'+memberColor(name)+'"':' style="background:'+memberColor(name)+'"'}>${inner}</span>`;
   const bord = cosmo(name, 'bordures');
-  if(!bord || !bord.fichier) return dot;
-  return `<span class="pdot-wrap">${dot}<img class="pdot-frame" src="/frames/${esc(bord.fichier)}" alt="" title="${esc(bord.nom)}"></span>`;
+  const frame = (bord && bord.fichier)
+    ? `<img class="pdot-frame" src="/frames/${esc(bord.fichier)}" alt="" title="${esc(bord.nom)}">` : '';
+  return `<span class="pdot-wrap${frame?' framed':''}">${dot}${frame}</span>`;
 }
 /* Nom du membre, coloré si une couleur de pseudo est équipée */
 function nameHtml(name){
