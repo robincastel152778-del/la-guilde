@@ -253,13 +253,10 @@
     width:205%; height:205%; pointer-events:none; z-index:2;}
   /* L'avatar ne porte plus de marge : elle passe sur l'enveloppe, sinon le cadre se décale */
   .pdot-wrap .pdot{margin:0 !important;}
-  /* Pile de participants : un cadre mesure 2,05× l'avatar, il lui faut de la place */
-  .arc2-people{max-width:292px; padding-left:18px;}
-  .arc2-people .pdot-wrap{margin-left:-18px; margin-bottom:6px;}
-  .arc2-people .pdot-wrap.framed{width:94px; height:94px; align-items:center; justify-content:center;
-    margin-left:-10px; margin-bottom:0;}
-  .arc2-people .pdot-wrap.framed .pdot{width:46px !important; height:46px !important; font-size:16px;}
-  .arc2-people .pdot-wrap.framed .pemoji{font-size:30px;}
+  /* Piles de participants : pas de cadre (illisible à cette taille, et pénible à régler).
+     On retrouve exactement l'affichage d'origine : avatars 64 px qui se chevauchent. */
+  .arc2-people .pdot-frame{display:none;}
+  .arc2-people .pdot-wrap{margin-left:-21px; margin-bottom:4px;}
   .profile-banner{height:clamp(170px, 19vw, 280px); border-radius:14px 14px 0 0;
     background-size:cover; background-position:center; margin-bottom:-58px; position:relative;}
   .profile-banner::after{content:""; position:absolute; inset:0; border-radius:14px 14px 0 0;
@@ -289,6 +286,37 @@
   .cz-theme i{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor;}
   body.has-theme{background-attachment:fixed;background-size:cover;background-position:center;}
   .cz-ban{width:84px;height:30px;border-radius:6px;background-size:cover;background-position:center;display:block;}
+  /* --- éléments de profil cliquables --- */
+  .cz-click{cursor:pointer; border-radius:8px; transition:.15s; display:inline-block;}
+  .cz-click:hover{background:rgba(139,124,255,.14); box-shadow:0 0 0 4px rgba(139,124,255,.14);}
+  .profile-banner.editable,.profile-banner.zoomable{cursor:pointer; overflow:hidden;}
+  .profile-banner.editable::before,.profile-banner.zoomable::before{content:""; position:absolute; inset:0;
+    border-radius:14px 14px 0 0; background:rgba(139,124,255,0); transition:.2s; z-index:1;}
+  .profile-banner.editable:hover::before,.profile-banner.zoomable:hover::before{background:rgba(20,16,40,.35);}
+  .ban-edit{position:absolute; left:16px; bottom:64px; z-index:2; font-size:12.5px; font-weight:700;
+    color:#fff; background:rgba(10,10,18,.65); border-radius:999px; padding:5px 13px; opacity:0; transition:.2s;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);}
+  .profile-banner:hover .ban-edit{opacity:1;}
+  .ban-zoom-btn{position:absolute; right:14px; top:14px; z-index:3; background:rgba(10,10,18,.7);
+    border:1px solid rgba(255,255,255,.25); color:#fff; border-radius:999px; padding:7px 14px;
+    font:700 12.5px 'Outfit',sans-serif; cursor:pointer; opacity:0; transition:.2s;}
+  .profile-banner:hover .ban-zoom-btn{opacity:1;}
+  .ban-zoom-btn:hover{background:var(--accent); border-color:var(--accent);}
+  .cz-flash{animation:czflash 1.6s ease;}
+  @keyframes czflash{0%,100%{background:transparent}20%,60%{background:rgba(255,200,87,.14);
+    box-shadow:0 0 0 8px rgba(255,200,87,.10); border-radius:10px}}
+  /* --- bannière en grand --- */
+  .ban-zoom{position:fixed; inset:0; z-index:400; background:rgba(6,7,12,.88); backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center; padding:26px; cursor:zoom-out;
+    opacity:0; transition:opacity .2s;}
+  .ban-zoom.on{opacity:1;}
+  .bz-inner{max-width:min(1200px,94vw); animation:bzin .32s cubic-bezier(.2,1.2,.4,1);}
+  .bz-inner img{width:100%; height:auto; border-radius:16px; display:block;
+    box-shadow:0 30px 80px rgba(0,0,0,.75); border:1px solid rgba(255,255,255,.12);}
+  .bz-cap{text-align:center; margin-top:14px; color:#E9EBF5; font-weight:700; font-size:15px;}
+  .bz-close{position:fixed; top:18px; right:22px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25);
+    color:#fff; width:40px; height:40px; border-radius:50%; font-size:16px; cursor:pointer;}
+  @keyframes bzin{from{transform:scale(.92); opacity:0}to{transform:none; opacity:1}}
   .gname{font-weight:800;}
   .gname.clip,.gc-encre,.gc-crepuscule,.gc-agrume,.gc-ocean,.gc-poison,.gc-vernis-pro,.gc-chrome,.gc-or-liquide,
   .gc-hologramme,.gc-braise,.gc-givre,.gc-arc-en-ciel,.gc-amethyste,.gc-sakura,.gc-emeraude,.gc-cuivre{
@@ -439,15 +467,39 @@ function cosmoRow(cat, titre, vide){
   const list = ownedItems(cat);
   const eq = (MYECO && MYECO.equipped && MYECO.equipped[cat]) || '';
   if(!list.length)
-    return `<div class="field"><label>${titre}</label>
+    return `<div class="field" id="cz-${cat}"><label>${titre}</label>
       <div class="game-meta">Rien dans ton inventaire pour l'instant — direction la 🛒 Boutique.</div></div>`;
-  return `<div class="field"><label>${titre}</label>
+  return `<div class="field" id="cz-${cat}"><label>${titre}</label>
     <div class="cz-row">
       <button type="button" class="cz-opt ${eq?'':'sel'}" onclick="equipCosmo('${cat}','')">Aucun</button>
       ${list.map(it=>`<button type="button" class="cz-opt ${eq===it.id?'sel':''}"
          title="${esc(it.nom)}" onclick="equipCosmo('${cat}','${esc(it.id)}')">${cosmoThumb(it)}</button>`).join('')}
     </div></div>`;
 }
+/* Ouvre la personnalisation en sautant droit au bon rayon de l'inventaire */
+async function openCosmoSection(cat){
+  await openAvatar('look');
+  setTimeout(()=>{
+    const el = document.getElementById('cz-'+cat);
+    if(!el) return;
+    el.scrollIntoView({ behavior:'smooth', block:'center' });
+    el.classList.add('cz-flash');
+    setTimeout(()=>el.classList.remove('cz-flash'), 1600);
+  }, 60);
+}
+/* Bannière en grand, dans une lightbox */
+function zoomBanner(file, nom){
+  const ov = document.createElement('div');
+  ov.className = 'ban-zoom';
+  ov.innerHTML = `<div class="bz-inner">
+      <img src="/banners/${esc(file)}" alt="">
+      <div class="bz-cap">🖼️ ${esc(nom||'')}</div>
+    </div><button class="bz-close" title="Fermer">✕</button>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+  requestAnimationFrame(()=>ov.classList.add('on'));
+}
+
 async function equipCosmo(cat, id){
   try{
     const r = await apiSend('/api/economy/equip','POST',{ me: ME, cat, id: id || null });
@@ -775,14 +827,24 @@ function viewPerso(){
   const phrase = sta ? sta.nom : getProf(ME).tagline;
   const banStyle = ban && ban.fichier ? `background-image:url('/banners/${esc(ban.fichier)}')` : '';
   return `
-    <div class="profile-banner${ban && ban.fichier ? '' : ' empty'}" style="${banStyle}" title="${ban?esc(ban.nom):'Aucune bannière équipée'}">
-      ${ban && ban.fichier ? '' : `<span class="banner-hint">🖼️ Aucune bannière équipée — <b onclick="openAvatar('look')">personnalise ton profil</b></span>`}
+    <div class="profile-banner editable${ban && ban.fichier ? '' : ' empty'}" style="${banStyle}"
+         onclick="openCosmoSection('bannieres')" title="Changer de bannière">
+      ${ban && ban.fichier
+        ? `<button class="ban-zoom-btn" title="Voir en grand"
+             onclick="event.stopPropagation(); zoomBanner('${esc(ban.fichier)}','${esc(ban.nom)}')">🔍 Voir en grand</button>
+           <span class="ban-edit">🖼️ ${esc(ban.nom)} — cliquer pour changer</span>`
+        : `<span class="banner-hint">🖼️ Aucune bannière équipée — <b>clique pour en choisir une</b></span>`}
     </div>
     <div class="card has-banner" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      ${pdotHtml(ME, 'xl', true)}
+      <span class="cz-click" onclick="openCosmoSection('bordures')" title="Changer d'avatar ou de bordure">${pdotHtml(ME, 'xl', false)}</span>
       <div>
-        <div style="font-weight:800; font-size:16px;">${nameHtml(ME)} ${statusDot(ME)}</div>
-        ${phrase?`<div class="game-meta" style="font-style:italic">${esc(phrase)}</div>`:''}
+        <div style="font-weight:800; font-size:16px;">
+          <span class="cz-click" onclick="openCosmoSection('couleurs')" title="Changer la couleur de ton pseudo">${nameHtml(ME)}</span>
+          ${statusDot(ME)}
+        </div>
+        <div class="game-meta cz-click" style="font-style:italic" onclick="openCosmoSection('statuts')" title="Changer ton statut">
+          ${phrase?esc(phrase):'✍️ Choisir un statut'}
+        </div>
       </div>
       <select class="status-select" onchange="setStatus(this.value)">
         <option value="" disabled ${!getProf(ME).status?'selected':''}>Mon statut du moment…</option>
@@ -934,7 +996,10 @@ function viewMemberProfile(m){
   return `
     <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour</button>
     ${mBan && mBan.fichier
-      ? `<div class="profile-banner" style="background-image:url('/banners/${esc(mBan.fichier)}')" title="${esc(mBan.nom)}"></div>`
+      ? `<div class="profile-banner zoomable" style="background-image:url('/banners/${esc(mBan.fichier)}')"
+             title="Voir la bannière en grand" onclick="zoomBanner('${esc(mBan.fichier)}','${esc(mBan.nom)}')">
+           <span class="ban-edit">🔍 ${esc(mBan.nom)}</span>
+         </div>`
       : `<div class="profile-banner empty"></div>`}
     <div class="card has-banner" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       ${pdotHtml(m, 'xl', true)}
