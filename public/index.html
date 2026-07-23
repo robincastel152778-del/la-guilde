@@ -246,6 +246,43 @@
   .sortbar input{flex:1; min-width:160px;}
 
   @media (prefers-reduced-motion:reduce){ *{animation:none !important; transition:none !important;} }
+
+  /* ===== Cosmétiques équipés (bordures, bannières, couleurs de pseudo) ===== */
+  .pdot-wrap{position:relative; display:inline-flex; flex-shrink:0; vertical-align:middle;}
+  .pdot-wrap .pdot-frame{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:205%; height:205%; pointer-events:none; z-index:2;}
+  .profile-banner{height:150px; border-radius:14px 14px 0 0; background-size:cover; background-position:center;
+    margin-bottom:-58px; position:relative;}
+  .profile-banner::after{content:""; position:absolute; inset:0; border-radius:14px 14px 0 0;
+    background:linear-gradient(180deg,transparent 35%,var(--panel) 96%);}
+  .card.has-banner{position:relative; z-index:1; background:transparent; border-top:none;
+    border-radius:0 0 14px 14px; padding-left:34px;}
+  .gname{font-weight:800;}
+  .gname.clip,.gc-encre,.gc-crepuscule,.gc-agrume,.gc-ocean,.gc-poison,.gc-vernis-pro,.gc-chrome,.gc-or-liquide,
+  .gc-hologramme,.gc-braise,.gc-givre,.gc-arc-en-ciel,.gc-amethyste,.gc-sakura,.gc-emeraude,.gc-cuivre{
+    -webkit-background-clip:text; background-clip:text; color:transparent; background-size:200% auto;}
+  .gc-or-guilde{color:var(--gold);} .gc-sang{color:#FF4D4D;} .gc-menthe{color:#7CE7C4;}
+  .gc-crepuscule{background-image:linear-gradient(90deg,#8B7CFF,#FF6B81);}
+  .gc-agrume{background-image:linear-gradient(90deg,#FF9D5C,#FFD93D);}
+  .gc-ocean{background-image:linear-gradient(90deg,#5EC8F2,#7CE7C4);}
+  .gc-poison{background-image:linear-gradient(90deg,#4ADE80,#B78CFF);}
+  .gc-vernis-pro{background-image:linear-gradient(100deg,#8B7CFF 0 38%,#fff 50%,#8B7CFF 62% 100%);animation:g-sheen 1.5s linear infinite;}
+  .gc-chrome{background-image:linear-gradient(100deg,#c8ccdd 0 40%,#fff 50%,#c8ccdd 60% 100%);animation:g-sheen 2.6s linear infinite;}
+  .gc-or-liquide{background-image:linear-gradient(100deg,#FFD24A 0 40%,#fff7d6 50%,#E8A33A 60% 100%);animation:g-sheen 2.8s linear infinite;}
+  .gc-hologramme{background-image:linear-gradient(90deg,#ff6ad5,#5EC8F2,#7CE7C4,#FFD93D,#ff6ad5);background-size:300% auto;animation:g-holo 5s linear infinite;}
+  .gc-braise{background-image:linear-gradient(0deg,#FF3D00,#FF9D00,#FFD93D);}
+  .gc-givre{background-image:linear-gradient(100deg,#CFF4FF 0 40%,#fff 50%,#8FD8FF 60% 100%);animation:g-sheen 4.2s linear infinite;}
+  .gc-neon-fusion{color:#fff;text-shadow:0 0 5px #b388ff,0 0 12px #8B7CFF,0 0 22px #8B7CFF;}
+  .gc-cyber{color:#9dfcff;text-shadow:0 0 6px #00E5FF,0 0 16px #00E5FF;}
+  .gc-arc-en-ciel{background-image:linear-gradient(90deg,#FF6B81,#FFD93D,#4ADE80,#5EC8F2,#B78CFF,#FF6B81);background-size:300% auto;animation:g-holo 3s linear infinite;}
+  .gc-encre{background-image:linear-gradient(100deg,#31313d 0 42%,#c4c4d6 50%,#31313d 58% 100%);background-size:220% auto;animation:g-sheen 3.4s linear infinite;}
+  .gc-amethyste{background-image:linear-gradient(90deg,#A24BFF,#E36BFF,#A24BFF);background-size:200% auto;animation:g-sheen 3.4s linear infinite;}
+  .gc-sakura{background-image:linear-gradient(100deg,#ffd7e6 0 40%,#fff 50%,#ffb3d1 60% 100%);animation:g-sheen 4s linear infinite;}
+  .gc-emeraude{background-image:linear-gradient(100deg,#3ef0b0 0 40%,#eafff6 50%,#12b98a 60% 100%);animation:g-sheen 3s linear infinite;}
+  .gc-cuivre{background-image:linear-gradient(100deg,#E8894A 0 40%,#ffd9b0 50%,#B5652A 60% 100%);animation:g-sheen 2.9s linear infinite;}
+  .gc-toxique{color:#c6ff6b;text-shadow:0 0 6px #7CFF6B,0 0 16px #7CFF6B;}
+  @keyframes g-sheen{to{background-position:-200% center;}}
+  @keyframes g-holo{to{background-position:300% center;}}
 </style>
 </head>
 <body>
@@ -285,12 +322,16 @@ async function apiSend(path, method, body){
   if(!r.ok){ toast('Erreur serveur — réessaie'); throw new Error('api ' + r.status); }
   return r.json().catch(()=>({}));
 }
+let COSMETICS = {};   /* cosmétiques équipés de chaque membre (bordure, bannière, couleur, statut) */
 async function loadAll(){
   const s = await apiGet('/api/state');
   MEMBERS = s.members || []; GAMES = s.games || []; ARCS = s.arcs || []; PROFILES = s.profiles || {};
   AVAIL = s.avail || []; SLOTS_DATA = s.slots || [];
   GAMES.sort((a,b)=> new Date(a.addedAt) - new Date(b.addedAt));
+  try { COSMETICS = await apiGet('/api/economy/all') || {}; } catch(e){ COSMETICS = COSMETICS || {}; }
 }
+/* Accès aux cosmétiques équipés d'un membre */
+function cosmo(name, cat){ return (COSMETICS[name] || {})[cat] || null; }
 /* Le profil choisi est mémorisé sur CE navigateur uniquement */
 function loadProfile(){ try{ return localStorage.getItem('guilde:profile'); }catch(e){ return null; } }
 function saveProfile(name){ try{ name===null ? localStorage.removeItem('guilde:profile') : localStorage.setItem('guilde:profile', name); }catch(e){} }
@@ -382,7 +423,15 @@ function pdotHtml(name, size, zoom){
   if(p.avatar?.type === 'emoji') inner = `<span class="pemoji">${esc(p.avatar.value)}</span>`;
   else if(p.avatar?.type === 'url') inner = `<img class="avatar-img" src="${esc(p.avatar.value)}" alt="${esc(initials(name))}" onerror="this.remove()">`;
   const cls = size === 'xl' ? 'xl' : size === 'md' ? 'md' : size ? 'big' : '';
-  return `<span class="pdot ${cls}" data-member="${esc(name)}"${zoom?' data-zoom="1" style="cursor:zoom-in; background:'+memberColor(name)+'"':' style="background:'+memberColor(name)+'"'}>${inner}</span>`;
+  const dot = `<span class="pdot ${cls}" data-member="${esc(name)}"${zoom?' data-zoom="1" style="cursor:zoom-in; background:'+memberColor(name)+'"':' style="background:'+memberColor(name)+'"'}>${inner}</span>`;
+  const bord = cosmo(name, 'bordures');
+  if(!bord || !bord.fichier) return dot;
+  return `<span class="pdot-wrap">${dot}<img class="pdot-frame" src="/frames/${esc(bord.fichier)}" alt="" title="${esc(bord.nom)}"></span>`;
+}
+/* Nom du membre, coloré si une couleur de pseudo est équipée */
+function nameHtml(name){
+  const c = cosmo(name, 'couleurs');
+  return c ? `<span class="gname gc-${esc(c.id)}">${esc(name)}</span>` : esc(name);
 }
 function statusDot(name){
   const st = getProf(name).status;
@@ -594,12 +643,15 @@ function viewPerso(){
     .map(g=>({g, avg:avgOf(g)})).filter(x=>x.avg!=null && x.avg>=7)
     .sort((a,b)=>b.avg-a.avg).slice(0,4);
 
+  const ban = cosmo(ME,'bannieres'), sta = cosmo(ME,'statuts');
+  const phrase = sta ? sta.nom : getProf(ME).tagline;
   return `
-    <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    ${ban && ban.fichier ? `<div class="profile-banner" style="background-image:url('/banners/${esc(ban.fichier)}')" title="${esc(ban.nom)}"></div>` : ''}
+    <div class="card${ban && ban.fichier ? ' has-banner' : ''}" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       ${pdotHtml(ME, 'xl', true)}
       <div>
-        <div style="font-weight:800; font-size:16px;">${esc(ME)} ${statusDot(ME)}</div>
-        ${getProf(ME).tagline?`<div class="game-meta" style="font-style:italic">${esc(getProf(ME).tagline)}</div>`:''}
+        <div style="font-weight:800; font-size:16px;">${nameHtml(ME)} ${statusDot(ME)}</div>
+        ${phrase?`<div class="game-meta" style="font-style:italic">${esc(phrase)}</div>`:''}
       </div>
       <select class="status-select" onchange="setStatus(this.value)">
         <option value="" disabled ${!getProf(ME).status?'selected':''}>Mon statut du moment…</option>
