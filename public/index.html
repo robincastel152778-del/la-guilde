@@ -275,6 +275,10 @@
   .cz-frame .cz-av .pemoji{font-size:19px;}
   .cz-frame img:last-child{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
     width:205%;height:205%;pointer-events:none;}
+  .cz-theme{display:inline-flex;align-items:center;gap:6px;min-width:104px;height:32px;padding:0 10px;
+    border-radius:7px;font-size:11.5px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);}
+  .cz-theme i{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 6px currentColor;}
+  body.has-theme{background-attachment:fixed;background-size:cover;background-position:center;}
   .cz-ban{width:84px;height:30px;border-radius:6px;background-size:cover;background-position:center;display:block;}
   .gname{font-weight:800;}
   .gname.clip,.gc-encre,.gc-crepuscule,.gc-agrume,.gc-ocean,.gc-poison,.gc-vernis-pro,.gc-chrome,.gc-or-liquide,
@@ -352,6 +356,38 @@ async function loadAll(){
 /* Accès aux cosmétiques équipés d'un membre */
 function cosmo(name, cat){ return (COSMETICS[name] || {})[cat] || null; }
 
+/* ---------- Thèmes globaux : palettes et application ---------- */
+const THEME_PAL = {
+  cyberpunk:{bg:'#070b14',panel:'#0d1526',panel2:'#111c33',border:'#1c2c4a',text:'#dff6ff',muted:'#6f88a8',accent:'#00E5FF',gold:'#FF3CAC'},
+  vaporwave:{bg:'#180a33',panel:'#241246',panel2:'#2d1657',border:'#3d2170',text:'#ffe6fb',muted:'#a488c8',accent:'#FF6AD5',gold:'#05FFA1'},
+  terminal:{bg:'#030a04',panel:'#06140a',panel2:'#0a1d0e',border:'#123d1c',text:'#b6ffc4',muted:'#4f9463',accent:'#33FF66',gold:'#9dff33'},
+  enfer:{bg:'#140404',panel:'#210909',panel2:'#2c0d0d',border:'#4a1c1c',text:'#ffe0d6',muted:'#b07a70',accent:'#FF5722',gold:'#FFB300'},
+  toundra:{bg:'#061019',panel:'#0c1a26',panel2:'#102435',border:'#1c3a4f',text:'#e6f9ff',muted:'#7095a8',accent:'#7FE7FF',gold:'#CFF4FF'},
+  'or-royal':{bg:'#120f08',panel:'#1e190e',panel2:'#282110',border:'#4a3d1c',text:'#fff3d6',muted:'#b0a070',accent:'#FFD24A',gold:'#FFE9A6'},
+  valorant:{bg:'#0d1420',panel:'rgba(15,26,42,.86)',panel2:'rgba(20,34,54,.88)',border:'rgba(150,70,80,.4)',text:'#eef0ff',muted:'#8ea0c0',accent:'#FF4655',gold:'#00E5C0'},
+  void:{bg:'#0c0718',panel:'rgba(22,14,40,.86)',panel2:'rgba(30,18,54,.88)',border:'rgba(160,120,220,.38)',text:'#ecdcff',muted:'#a088c8',accent:'#A24BFF',gold:'#C77BFF'},
+  shurima:{bg:'#171208',panel:'rgba(34,26,12,.86)',panel2:'rgba(46,34,16,.88)',border:'rgba(200,160,90,.38)',text:'#fff0d0',muted:'#c4ac78',accent:'#E8C15A',gold:'#FFDE8A'},
+  ionia:{bg:'#12101c',panel:'rgba(28,22,40,.86)',panel2:'rgba(36,28,52,.88)',border:'rgba(200,150,190,.36)',text:'#ffe9f2',muted:'#b8a8c8',accent:'#FF89B0',gold:'#9ED9C0'},
+  piltover:{bg:'#17110a',panel:'rgba(34,26,14,.86)',panel2:'rgba(46,35,18,.88)',border:'rgba(210,170,90,.38)',text:'#fff2dc',muted:'#c4ac80',accent:'#F2C14E',gold:'#FFCF87'},
+  zaun:{bg:'#0c1109',panel:'rgba(20,30,16,.86)',panel2:'rgba(28,42,20,.88)',border:'rgba(120,180,90,.36)',text:'#e6ffd8',muted:'#9fb888',accent:'#7CFF6B',gold:'#C87F3A'},
+  pirate:{bg:'#0c1512',panel:'rgba(16,30,26,.86)',panel2:'rgba(22,40,34,.88)',border:'rgba(150,170,120,.36)',text:'#f2ead6',muted:'#a8b49c',accent:'#E8C15A',gold:'#4FD0C0'},
+};
+/* Applique le thème équipé par MOI (les autres ne voient pas le mien) */
+function applyMyTheme(){
+  const th = cosmo(ME, 'themes');
+  const root = document.documentElement.style;
+  ['bg','panel','panel2','border','text','muted','accent','gold'].forEach(k => root.removeProperty('--'+k));
+  document.body.classList.toggle('has-theme', !!th);
+  document.body.style.backgroundImage = '';
+  if(!th) return;
+  const p = THEME_PAL[th.id];
+  if(p) for(const k in p) root.setProperty('--'+k, p[k]);
+  if(th.fichier){
+    document.body.style.backgroundImage =
+      `linear-gradient(rgba(0,0,0,.55),rgba(0,0,0,.68)), url('/themes/${th.fichier}')`;
+  }
+}
+
 /* ---------- Cosmétiques : catalogue + inventaire du joueur ---------- */
 let ECO_CAT = null, MYECO = null;
 async function loadEcoProfile(){
@@ -381,6 +417,12 @@ function cosmoThumb(it){
     return `<span class="gname gc-${esc(it.id)}" style="font-size:15px">${esc(ME)}</span>`;
   if(it.cat === 'statuts')
     return `<span style="font-style:italic;font-size:13px">${esc(it.nom)}</span>`;
+  if(it.cat === 'themes'){
+    const p = THEME_PAL[it.id] || {};
+    const bg = it.fichier ? `background-image:url('/themes/${esc(it.fichier)}');background-size:cover;background-position:center`
+                          : `background:linear-gradient(135deg,${p.bg||'#171A24'},${p.accent||'#8B7CFF'})`;
+    return `<span class="cz-theme" style="${bg}"><i style="background:${p.accent||'#8B7CFF'}"></i>${esc(it.nom)}</span>`;
+  }
   return esc(it.nom);
 }
 /* Une ligne de choix pour une catégorie de cosmétiques */
@@ -590,6 +632,7 @@ async function refreshData(silent){
 /* ---------- Render root ---------- */
 function render(){
   const app = document.getElementById('app');
+  applyMyTheme();                     /* thème global équipé (ta vue uniquement) */
   if(!ME){ app.innerHTML = renderOnboard(); return; }
   const toRate = GAMES.filter(g => g.ratings?.[ME] == null || (g.owned ? g.owned[ME] : undefined) === undefined).length;
   app.innerHTML = `
@@ -984,6 +1027,7 @@ async function openAvatar(tab){
         ${cosmoRow('bannieres', '🖼️ Bannière de profil')}
         ${cosmoRow('couleurs',  '🎨 Couleur de pseudo')}
         ${cosmoRow('statuts',   '💬 Statut')}
+        ${cosmoRow('themes',    '🌐 Thème du site (ne change que ta vue)')}
       </div>
     </div>
 
