@@ -257,6 +257,25 @@
     background:linear-gradient(180deg,transparent 35%,var(--panel) 96%);}
   .card.has-banner{position:relative; z-index:1; background:transparent; border-top:none;
     border-radius:0 0 14px 14px; padding-left:34px;}
+  .profile-banner.empty{background:linear-gradient(135deg,#1b1f2e,#141722);border:1px dashed var(--border);
+    border-bottom:none;display:flex;align-items:center;justify-content:center;}
+  .banner-hint{color:var(--muted);font-size:13px;position:relative;z-index:1;margin-bottom:34px;}
+  .banner-hint b{color:var(--accent);cursor:pointer;text-decoration:underline;}
+  /* sélecteurs de cosmétiques dans la modale */
+  .cz-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .cz-opt{background:var(--panel2);border:2px solid var(--border);border-radius:10px;padding:7px 10px;
+    cursor:pointer;color:var(--text);font-family:inherit;font-size:12px;font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;min-height:46px;}
+  .cz-opt:hover{border-color:var(--muted);}
+  .cz-opt.sel{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,200,87,.2);}
+  .cz-frame{position:relative;display:inline-flex;width:34px;height:34px;}
+  .cz-frame .cz-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;font-size:13px;font-weight:800;color:#0F1118;}
+  .cz-frame .cz-av img{width:100%;height:100%;object-fit:cover;}
+  .cz-frame .cz-av .pemoji{font-size:19px;}
+  .cz-frame img:last-child{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:205%;height:205%;pointer-events:none;}
+  .cz-ban{width:84px;height:30px;border-radius:6px;background-size:cover;background-position:center;display:block;}
   .gname{font-weight:800;}
   .gname.clip,.gc-encre,.gc-crepuscule,.gc-agrume,.gc-ocean,.gc-poison,.gc-vernis-pro,.gc-chrome,.gc-or-liquide,
   .gc-hologramme,.gc-braise,.gc-givre,.gc-arc-en-ciel,.gc-amethyste,.gc-sakura,.gc-emeraude,.gc-cuivre{
@@ -332,6 +351,62 @@ async function loadAll(){
 }
 /* Accès aux cosmétiques équipés d'un membre */
 function cosmo(name, cat){ return (COSMETICS[name] || {})[cat] || null; }
+
+/* ---------- Cosmétiques : catalogue + inventaire du joueur ---------- */
+let ECO_CAT = null, MYECO = null;
+async function loadEcoProfile(){
+  try{
+    if(!ECO_CAT) ECO_CAT = await apiGet('/api/economy/catalogue');
+    MYECO = await apiSend('/api/economy/state','POST',{ me: ME });
+  }catch(e){ ECO_CAT = ECO_CAT || { items:[] }; MYECO = MYECO || { purchases:[], equipped:{} }; }
+}
+function ownedItems(cat){
+  const own = new Set((MYECO && MYECO.purchases) || []);
+  return ((ECO_CAT && ECO_CAT.items) || []).filter(i => i.cat === cat && own.has(i.key));
+}
+function myAvatarInner(){
+  const a = getProf(ME).avatar;
+  if(a && a.type === 'emoji') return `<span class="pemoji">${a.value}</span>`;
+  if(a && a.type === 'url') return `<img src="${esc(a.value)}" alt="">`;
+  return initials(ME);
+}
+/* Vignette d'un cosmétique, selon sa catégorie */
+function cosmoThumb(it){
+  if(it.cat === 'bordures')
+    return `<span class="cz-frame"><span class="cz-av" style="background:${memberColor(ME)}">${myAvatarInner()}</span>`
+         + `<img src="/frames/${esc(it.fichier)}" alt=""></span>`;
+  if(it.cat === 'bannieres')
+    return `<span class="cz-ban" style="background-image:url('/banners/${esc(it.fichier)}')"></span>`;
+  if(it.cat === 'couleurs')
+    return `<span class="gname gc-${esc(it.id)}" style="font-size:15px">${esc(ME)}</span>`;
+  if(it.cat === 'statuts')
+    return `<span style="font-style:italic;font-size:13px">${esc(it.nom)}</span>`;
+  return esc(it.nom);
+}
+/* Une ligne de choix pour une catégorie de cosmétiques */
+function cosmoRow(cat, titre, vide){
+  const list = ownedItems(cat);
+  const eq = (MYECO && MYECO.equipped && MYECO.equipped[cat]) || '';
+  if(!list.length)
+    return `<div class="field"><label>${titre}</label>
+      <div class="game-meta">Rien dans ton inventaire pour l'instant — direction la 🛒 Boutique.</div></div>`;
+  return `<div class="field"><label>${titre}</label>
+    <div class="cz-row">
+      <button type="button" class="cz-opt ${eq?'':'sel'}" onclick="equipCosmo('${cat}','')">Aucun</button>
+      ${list.map(it=>`<button type="button" class="cz-opt ${eq===it.id?'sel':''}"
+         title="${esc(it.nom)}" onclick="equipCosmo('${cat}','${esc(it.id)}')">${cosmoThumb(it)}</button>`).join('')}
+    </div></div>`;
+}
+async function equipCosmo(cat, id){
+  try{
+    const r = await apiSend('/api/economy/equip','POST',{ me: ME, cat, id: id || null });
+    if(r && r.error){ toast(r.error); return; }
+    MYECO = r;
+    await loadAll();
+    openAvatar('look');          /* on rouvre sur le même volet, aperçu à jour */
+    toast(id ? 'Équipé ✨' : 'Retiré');
+  }catch(e){ toast('Impossible d\u2019équiper — recharge la page'); }
+}
 /* Le profil choisi est mémorisé sur CE navigateur uniquement */
 function loadProfile(){ try{ return localStorage.getItem('guilde:profile'); }catch(e){ return null; } }
 function saveProfile(name){ try{ name===null ? localStorage.removeItem('guilde:profile') : localStorage.setItem('guilde:profile', name); }catch(e){} }
@@ -645,9 +720,12 @@ function viewPerso(){
 
   const ban = cosmo(ME,'bannieres'), sta = cosmo(ME,'statuts');
   const phrase = sta ? sta.nom : getProf(ME).tagline;
+  const banStyle = ban && ban.fichier ? `background-image:url('/banners/${esc(ban.fichier)}')` : '';
   return `
-    ${ban && ban.fichier ? `<div class="profile-banner" style="background-image:url('/banners/${esc(ban.fichier)}')" title="${esc(ban.nom)}"></div>` : ''}
-    <div class="card${ban && ban.fichier ? ' has-banner' : ''}" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <div class="profile-banner${ban && ban.fichier ? '' : ' empty'}" style="${banStyle}" title="${ban?esc(ban.nom):'Aucune bannière équipée'}">
+      ${ban && ban.fichier ? '' : `<span class="banner-hint">🖼️ Aucune bannière équipée — <b onclick="openAvatar('look')">personnalise ton profil</b></span>`}
+    </div>
+    <div class="card has-banner" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       ${pdotHtml(ME, 'xl', true)}
       <div>
         <div style="font-weight:800; font-size:16px;">${nameHtml(ME)} ${statusDot(ME)}</div>
@@ -858,39 +936,87 @@ async function setTagline(t){
   render();
 }
 const COLORS = ['#8B7CFF','#FFC857','#4ADE80','#FF6B81','#5EC8F2','#FF9D5C','#B78CFF','#7CE7C4','#F97BC1','#C3E24A','#FFD93D','#6BE0FF'];
-function openAvatar(){
-  const cur = getProf(ME).avatar;
-  const curCol = getProf(ME).color || '';
+async function openAvatar(tab){
+  if(!MYECO) await loadEcoProfile();
+  const prof = getProf(ME);
+  const cur = prof.avatar, curCol = prof.color || '';
+  const hasUrl = cur?.type === 'url';
   openModal(`
-    <h2>Avatar & couleur</h2>
-    <div class="sub">Un emoji dans la galerie, ou colle l'URL d'une image de ton choix (clic droit sur une image du web → « Copier l'adresse de l'image »).</div>
-    <div class="avatar-grid">
-      ${AVATARS.map(a=>`<button type="button" class="avatar-opt ${cur?.type==='emoji'&&cur.value===a?'sel':''}" data-a="${a}" onclick="pickAvatar(this)">${a}</button>`).join('')}
+    <h2>Mon profil</h2>
+    <div class="chips" style="margin-bottom:16px">
+      <button type="button" class="chip-opt sel" id="tab-look" onclick="avTab('look')">🎨 Apparence</button>
+      <button type="button" class="chip-opt" id="tab-tech" onclick="avTab('tech')">⚙️ Réglages</button>
     </div>
-    <div class="field" style="margin-top:14px"><label>Ou l'URL d'une image (elle sera prioritaire)</label>
-      <input type="url" id="av-url" value="${cur?.type==='url'?esc(cur.value):''}" placeholder="https://…"></div>
-    <div class="field"><label>Ta couleur (fond d'avatar et pastilles)</label>
-      <div class="chips">
-        ${COLORS.map(c=>`<button type="button" class="col-opt ${curCol===c?'sel':''}" data-c="${c}" style="background:${c}" title="${c}" onclick="pickColor(this)"></button>`).join('')}
+
+    <div id="pane-look">
+      <div class="sub" style="margin-bottom:12px">Ton avatar, puis les cosmétiques débloqués en boutique.</div>
+
+      <div id="av-basic" style="${hasUrl?'display:none':''}">
+        <div class="field"><label>Choisis un emoji</label>
+          <div class="avatar-grid">
+            ${AVATARS.map(a=>`<button type="button" class="avatar-opt ${cur?.type==='emoji'&&cur.value===a?'sel':''}" data-a="${a}" onclick="pickAvatar(this)">${a}</button>`).join('')}
+          </div>
+        </div>
+        <div class="field"><label>Ta couleur (fond d'avatar et pastilles)</label>
+          <div class="chips">
+            ${COLORS.map(c=>`<button type="button" class="col-opt ${curCol===c?'sel':''}" data-c="${c}" style="background:${c}" title="${c}" onclick="pickColor(this)"></button>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="field"><label>Ou l'URL d'une image (elle remplace l'emoji)</label>
+        <input type="url" id="av-url" value="${hasUrl?esc(cur.value):''}" placeholder="https://…" oninput="toggleUrlMode()">
+        <div class="game-meta" id="av-urlnote" style="margin-top:4px;${hasUrl?'':'display:none'}">
+          URL renseignée : elle est prioritaire, le choix d'emoji et de couleur est masqué.
+          Vide ce champ pour les retrouver.
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border); margin:18px 0 4px; padding-top:14px">
+        <div class="sub" style="margin-bottom:12px">🎁 Mes cosmétiques</div>
+        ${cosmoRow('bordures',  '⭕ Bordure d\'avatar')}
+        ${cosmoRow('bannieres', '🖼️ Bannière de profil')}
+        ${cosmoRow('couleurs',  '🎨 Couleur de pseudo')}
+        ${cosmoRow('statuts',   '💬 Statut')}
       </div>
     </div>
-    <div class="field"><label>Mon ID Discord — pour les canaux privés et les boutons ✅/❌</label>
-      <input type="text" id="av-discord" value="${esc(getProf(ME).discordId||'')}" placeholder="Ex : 184405311681986560">
-      <div class="game-meta" style="margin-top:4px">Discord → Paramètres → Avancés → activer le Mode développeur, puis clic droit sur ton pseudo → « Copier l\u2019identifiant de l\u2019utilisateur ».</div>
-    </div>
-    <div class="field"><label>🔒 Verrouiller mes créneaux confirmés dans mon calendrier ?</label>
-      <div class="chips">
-        <button type="button" class="chip-opt ${getProf(ME).lockPref?'sel':''}" id="lock-yes" onclick="pickLock(true)">Oui</button>
-        <button type="button" class="chip-opt ${getProf(ME).lockPref?'':'sel'}" id="lock-no" onclick="pickLock(false)">Non</button>
+
+    <div id="pane-tech" style="display:none">
+      <div class="sub" style="margin-bottom:12px">Réglages techniques : identifiant Discord et préférences.</div>
+      <div class="field"><label>Mon ID Discord — pour les canaux privés et les boutons ✅/❌</label>
+        <input type="text" id="av-discord" value="${esc(prof.discordId||'')}" placeholder="Ex : 184405311681986560">
+        <div class="game-meta" style="margin-top:4px">Discord → Paramètres → Avancés → activer le Mode développeur, puis clic droit sur ton pseudo → « Copier l\u2019identifiant de l\u2019utilisateur ».</div>
       </div>
-      <div class="game-meta" style="margin-top:4px">Si oui : répondre ✅ à un créneau réserve la case chez toi (🔒) et te rend indispo pour les autres campagnes sur ce créneau.</div>
+      <div class="field"><label>🔒 Verrouiller mes créneaux confirmés dans mon calendrier ?</label>
+        <div class="chips">
+          <button type="button" class="chip-opt ${prof.lockPref?'sel':''}" id="lock-yes" onclick="pickLock(true)">Oui</button>
+          <button type="button" class="chip-opt ${prof.lockPref?'':'sel'}" id="lock-no" onclick="pickLock(false)">Non</button>
+        </div>
+        <div class="game-meta" style="margin-top:4px">Si oui : répondre ✅ à un créneau réserve la case chez toi (🔒) et te rend indispo pour les autres campagnes sur ce créneau.</div>
+      </div>
     </div>
+
     <div class="err" id="av-err"></div>
     <div class="modal-actions">
       ${(cur||curCol)?`<button class="btn" style="margin-right:auto" onclick="saveAvatar(null)">Tout réinitialiser</button>`:''}
       <button class="btn" onclick="closeModal()">Annuler</button>
       <button class="btn primary" onclick="saveAvatar()">Enregistrer</button>
     </div>`);
+  if(tab === 'tech') avTab('tech');
+}
+/* Bascule entre les deux volets de la modale */
+function avTab(which){
+  const look = which === 'look';
+  document.getElementById('pane-look').style.display = look ? '' : 'none';
+  document.getElementById('pane-tech').style.display = look ? 'none' : '';
+  document.getElementById('tab-look').classList.toggle('sel', look);
+  document.getElementById('tab-tech').classList.toggle('sel', !look);
+}
+/* Une URL renseignée masque emoji + couleur (elle est prioritaire) */
+function toggleUrlMode(){
+  const on = document.getElementById('av-url').value.trim() !== '';
+  document.getElementById('av-basic').style.display = on ? 'none' : '';
+  document.getElementById('av-urlnote').style.display = on ? '' : 'none';
 }
 function pickColor(btn){
   btn.parentElement.querySelectorAll('.col-opt').forEach(b=>b.classList.remove('sel'));
