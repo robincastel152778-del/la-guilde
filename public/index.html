@@ -484,6 +484,7 @@ function render(){
         <button class="tab ${TAB==='social'?'active':''}" onclick="setTab('social')">Social</button>
         <button class="tab ${TAB==='jeux'?'active':''}" onclick="setTab('jeux')">Tous les jeux</button>
         <button class="tab ${TAB==='aventures'?'active':''}" onclick="setTab('aventures')">Aventures</button>
+        <button class="tab" onclick="GuildEconomy.openShop()">🛒 Boutique</button>
       </nav>
     </header>
     <main>${ TAB==='panneau' ? viewPanneau() : TAB==='perso' ? viewPerso() : TAB==='biblio' ? viewBiblio() : TAB==='social' ? viewSocial() : TAB==='jeux' ? viewJeux() : viewAventures() }</main>`;
@@ -991,6 +992,15 @@ function arcCard(a, canDelete){
                 ? `<div class="arc-meta" style="margin-top:8px">⏳ Demande envoyée · <a href="#" onclick="cancelRequest('${a.id}'); return false;">retirer</a></div>`
                 : `<button class="mini-btn" style="margin-top:8px" onclick="requestJoin('${a.id}')">🙋 Demander à rejoindre</button>`;
             }
+            // Vote de difficulté : réservé aux NON-participants, fixe la récompense en GP
+            if(on && isCamp && !isMember && a.goal && !a.goalDone){
+              const mine = (a.diffVotes||{})[ME];
+              const btn = (lv,lbl,gp)=>`<button class="mini-btn" style="margin-right:6px${mine===lv?';border-color:var(--gold);color:var(--gold)':''}" onclick="voteDifficulty('${a.id}','${lv}')">${lbl} · ${gp} GP</button>`;
+              extra += `<div class="arc-meta" style="margin-top:8px">⚖️ Difficulté ${mine?`(ton vote : <b>${mine}</b>)`:'— ton avis ?'}<div style="margin-top:5px">${btn('facile','Facile',350)}${btn('normale','Normale',700)}${btn('difficile','Difficile',1500)}</div></div>`;
+            }
+            if(on && isCamp && isMember && a.goal && Object.keys(a.diffVotes||{}).length){
+              extra += `<div class="arc-meta" style="margin-top:8px">⚖️ Difficulté votée : <b>${esc(arcDifficulty(a))}</b> → <span style="color:var(--gold)">${DIFF_GP[arcDifficulty(a)]} GP</span> par participant si réussie</div>`;
+            }
             if(on && isCamp && isMember && a.requests && Object.keys(a.requests).length){
               extra += Object.entries(a.requests).map(([who,rq])=>`
                 <div class="arc-meta" style="margin-top:8px">🙋 <b>${esc(who)}</b> veut rejoindre — ${
@@ -1013,6 +1023,25 @@ async function leaveArc(id){
   else if(r.reason==='started') toast('Trop tard, elle a déjà commencé — vois avec le groupe !');
   else if(r.reason==='not_in') toast('Tu ne fais pas partie de cette aventure');
   else if(r.reason==='closed') toast('Cette aventure est déjà terminée');
+  render();
+}
+/* ---------- Difficulté d'une campagne (récompense en Guildpoints) ---------- */
+const DIFF_GP = { facile:350, normale:700, difficile:1500 };
+function arcDifficulty(a){
+  const c = { facile:0, normale:0, difficile:0 };
+  for(const lv of Object.values(a.diffVotes||{})) if(c[lv]!=null) c[lv]++;
+  const max = Math.max(c.facile, c.normale, c.difficile);
+  if(max<=0) return 'normale';
+  if(c.normale===max) return 'normale';
+  if(c.difficile===max) return 'difficile';
+  return 'facile';
+}
+async function voteDifficulty(id, level){
+  const r = await apiSend('/api/arcs/'+id+'/difficulty', 'POST', { member: ME, level });
+  await loadAll();
+  if(r.ok) toast('Vote enregistré : '+level);
+  else if(r.reason==='participant') toast('Tu participes — tu ne peux pas voter ta propre difficulté');
+  else if(r.reason==='done') toast('Objectif déjà atteint, le vote est figé');
   render();
 }
 async function setGoal(id, done){
@@ -1740,5 +1769,6 @@ async function showOgPop(url, anchor){
 
 init();
 </script>
+<script src="boutique.js"></script>
 </body>
 </html>
