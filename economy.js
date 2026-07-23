@@ -126,8 +126,11 @@ module.exports = function (pool, broadcast) {
   async function stateFor(me){
     const rec = await getRec(me);
     const owned = new Set(rec.purchases || []);
-    if (!rec.shop || rec.shop.date !== todayStr()){
-      rec.shop = { date: todayStr(), slots: genShop(owned), rerolled: false };
+    // Régénère si le shop date d'hier OU s'il est vide (ex. catalogue corrigé entre-temps)
+    const empty = !rec.shop || !Array.isArray(rec.shop.slots) ||
+                  rec.shop.slots.filter(k => ITEM_BY_KEY.has(k)).length === 0;
+    if (!rec.shop || rec.shop.date !== todayStr() || empty){
+      rec.shop = { date: todayStr(), slots: genShop(owned), rerolled: (rec.shop && rec.shop.date === todayStr()) ? !!rec.shop.rerolled : false };
       await saveRec(me, rec);
     }
     const slots = rec.shop.slots.map(k => ITEM_BY_KEY.get(k)).filter(Boolean).map(it => ({
