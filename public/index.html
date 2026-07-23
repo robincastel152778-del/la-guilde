@@ -869,6 +869,9 @@ function soWeek(o){ SOC_WEEK = Math.max(0, Math.min(3, o)); render(); }
 function openMemberProfile(m){ SOCIAL_SEL = m; SOC_WEEK = 0; render(); }
 function viewMemberProfile(m){
   const st = getProf(m).status;
+  /* Cosmétiques équipés du membre consulté : même rendu que « Mon espace » */
+  const mBan = cosmo(m,'bannieres'), mSta = cosmo(m,'statuts');
+  const mPhrase = mSta ? mSta.nom : getProf(m).tagline;
   const myCamps = ARCS.filter(a=>(a.participants||[]).includes(m))
     .sort((a,b)=> (a.status==='en cours'?0:1)-(b.status==='en cours'?0:1) || new Date(b.createdAt)-new Date(a.createdAt));
   const rated = GAMES.filter(g=> typeof g.ratings?.[m]==='number')
@@ -877,11 +880,14 @@ function viewMemberProfile(m){
     .sort((a,b)=> new Date(b.addedAt)-new Date(a.addedAt));
   return `
     <button class="mini-btn" style="margin-bottom:14px" onclick="SOCIAL_SEL=null; render();">← Retour</button>
-    <div class="card" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    ${mBan && mBan.fichier
+      ? `<div class="profile-banner" style="background-image:url('/banners/${esc(mBan.fichier)}')" title="${esc(mBan.nom)}"></div>`
+      : `<div class="profile-banner empty"></div>`}
+    <div class="card has-banner" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
       ${pdotHtml(m, 'xl', true)}
       <div>
-        <div style="font-weight:800; font-size:18px;">${esc(m)} ${statusDot(m)}</div>
-        ${getProf(m).tagline?`<div class="game-meta" style="font-style:italic; color:var(--gold)">${esc(getProf(m).tagline)}</div>`:''}
+        <div style="font-weight:800; font-size:18px;">${nameHtml(m)} ${statusDot(m)}</div>
+        ${mPhrase?`<div class="game-meta" style="font-style:italic; color:var(--gold)">${esc(mPhrase)}</div>`:''}
         <div class="game-meta">${st ? esc(STATUS[st].label) : 'Statut non renseigné'}</div>
       </div>
     </div>
