@@ -1,0 +1,687 @@
+{
+  "couleurs": [
+    {
+      "id": "encre",
+      "nom": "Encre",
+      "rarete": épique,
+      "prix": 750
+    },
+    {
+      "id": "or-guilde",
+      "nom": "Or Guilde",
+      "rarete": commun,
+      "prix": 250
+    },
+    {
+      "id": "sang",
+      "nom": "Sang",
+      "rarete": commun,
+      "prix": 250
+    },
+    {
+      "id": "menthe",
+      "nom": "Menthe",
+      "rarete": commun,
+      "prix": 250
+    },
+    {
+      "id": "crepuscule",
+      "nom": "Crépuscule",
+      "rarete": épique,
+      "prix": 750
+    },
+    {
+      "id": "agrume",
+      "nom": "Agrume",
+      "rarete": Rare,
+      "prix": 400
+    },
+    {
+      "id": "ocean",
+      "nom": "Océan",
+      "rarete": rare,
+      "prix": 400
+    },
+    {
+      "id": "poison",
+      "nom": "Poison",
+      "rarete": rare,
+      "prix": 400
+    },
+    {
+      "id": "vernis-pro",
+      "nom": "Vernis Pro",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "chrome",
+      "nom": "Chrome",
+      "rarete": épique,
+      "prix": 750
+    },
+    {
+      "id": "or-liquide",
+      "nom": "Or Liquide",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "hologramme",
+      "nom": "Hologramme",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "braise",
+      "nom": "Braise",
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "givre",
+      "nom": "Givre",
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "neon-fusion",
+      "nom": "Néon Fusion",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "cyber",
+      "nom": "Cyber",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "arc-en-ciel",
+      "nom": "Arc-en-ciel",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "amethyste",
+      "nom": "Améthyste",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "sakura",
+      "nom": "Sakura",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "emeraude",
+      "nom": "Émeraude",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "cuivre",
+      "nom": "Cuivre",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "toxique",
+      "nom": "Toxique",
+      "rarete": mythique
+      "prix": 1500
+    }
+  ],
+  "statuts": [
+    {
+      "id": "st01",
+      "texte": "Rage quit imminent",
+      "rarete": null,
+      "prix": null
+    },
+    {
+      "id": "st02",
+      "texte": "AFK dans l'âme",
+      "rarete": de base (inclus dans chaque profil)
+      "prix": 0
+    },
+    {
+      "id": "st03",
+      "texte": "300h de jeu, toujours aussi nul",
+      "rarete": (inclus dans chaque profil)
+      "prix": 0
+    },
+    {
+      "id": "st04",
+      "texte": "« Une dernière et j'arrête »",
+      "rarete": (inclus dans chaque profil)
+      "prix": 0
+    },
+    {
+      "id": "st05",
+      "texte": "La solo Q m'a brisé",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st06",
+      "texte": "J'achète, j'installe, j'y joue jamais",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st07",
+      "texte": "Toujours partant, jamais dispo",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st08",
+      "texte": "Full tilt depuis 2019",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st09",
+      "texte": "Meta slave assumé",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st10",
+      "texte": "Aim au sol, ego au ciel",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st11",
+      "texte": "LÉGENDE VIVANTE",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "st12",
+      "texte": "400 de ping",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st13",
+      "texte": "Jungle diff",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st14",
+      "texte": "Malade mental après 2h du mat",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st15",
+      "texte": "/all ez en 0/15",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st16",
+      "texte": "Golem certifié",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st17",
+      "texte": "Never touched grass",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st18",
+      "texte": "Joue sur un aspirateur Dyson",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st19",
+      "texte": "Wishlist infinie, portefeuille en interdit bancaire",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st20",
+      "texte": "Dernière douche en 2014",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "st21",
+      "texte": "Low cortisol",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "st22",
+      "texte": "Paracé-muteall",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st23",
+      "texte": "Transpire en normal game",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st24",
+      "texte": "Full delu et le sait",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st25",
+      "texte": "TU PARLES",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st26",
+      "texte": "FF15 professional",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st27",
+      "texte": "Nul au jeu, mais on l'aime bien quand même",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st28",
+      "texte": "Chain loose enjoyer",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st29",
+      "texte": "Smiteur de canon",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st30",
+      "texte": "Chain loose dans la vraie vie",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st31",
+      "texte": "Hardstuck depuis la saison 3",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st32",
+      "texte": "0/10 mais no surrender",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st33",
+      "texte": "reported, jamais ban",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st34",
+      "texte": "Toxic mais honneur 5",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st35",
+      "texte": "terroriste de la faille",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "st36",
+      "texte": "Korean builds enjoyer",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "st37",
+      "texte": "plat or below = muted",
+      "rarete": commun
+      "prix": 250
+    }
+  ],
+  "bannieres": [
+    {
+      "id": "baie-de-bilgewater",
+      "nom": "Baie de Bilgewater",
+      "fichier": "banner-baie-de-bilgewater.jpg",
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "toundra-eternelle",
+      "nom": "Toundra Éternelle",
+      "fichier": "banner-toundra-eternelle.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "serenite-ionia",
+      "nom": "Sérénité d'Ionia",
+      "fichier": "banner-serenite-ionia.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "marche-de-noxus",
+      "nom": "Marche de Noxus",
+      "fichier": "banner-marche-de-noxus.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "ligne-de-faille",
+      "nom": "Ligne de Faille",
+      "fichier": "banner-ligne-de-faille.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "renaissance-shurima",
+      "nom": "Renaissance de Shurima",
+      "fichier": "banner-renaissance-shurima.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "abysse-du-neant",
+      "nom": "Abysse du Néant",
+      "fichier": "banner-abysse-du-neant.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "bas-fonds",
+      "nom": "Bas-Fonds",
+      "fichier": "banner-bas-fonds.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "gardiens-de-pierre",
+      "nom": "Gardiens de Pierre",
+      "fichier": "banner-gardiens-de-pierre.jpg",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "rassemblement",
+      "nom": "Rassemblement",
+      "fichier": "banner-rassemblement.jpg",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "protocole",
+      "nom": "Protocole",
+      "fichier": "banner-protocole.jpg",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "les-agents",
+      "nom": "Les Agents",
+      "fichier": "banner-les-agents.jpg",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "lame-de-jett",
+      "nom": "Lame de Jett",
+      "fichier": "banner-lame-de-jett.jpg",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "eclat-radiant",
+      "nom": "Éclat Radiant",
+      "fichier": "banner-eclat-radiant.jpg",
+      "rarete": mythique
+      "prix": 1500
+    }
+  ],
+  "bordures": [
+    {
+      "id": "rouages-hextech",
+      "nom": "Rouages Hextech",
+      "fichier": "frame-rouages-hextech.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "damnation",
+      "nom": "Damnation",
+      "fichier": "frame-damnation.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "fulgur",
+      "nom": "Fulgur",
+      "fichier": "frame-fulgur.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "sceau-arcanique",
+      "nom": "Sceau Arcanique",
+      "fichier": "frame-sceau-arcanique.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "coeur-de-magma",
+      "nom": "Cœur de Magma",
+      "fichier": "frame-coeur-de-magma.png",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "ressac",
+      "nom": "Ressac",
+      "fichier": "frame-ressac.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "eclat-de-cristal",
+      "nom": "Éclat de Cristal",
+      "fichier": "frame-eclat-de-cristal.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "sentinelle",
+      "nom": "Sentinelle",
+      "fichier": "frame-sentinelle.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "morsure-de-givre",
+      "nom": "Morsure de Givre",
+      "fichier": "frame-morsure-de-givre.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "pavillon-corsaire",
+      "nom": "Pavillon Corsaire",
+      "fichier": "frame-pavillon-corsaire.png",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "ecrin-emeraude",
+      "nom": "Écrin d'Émeraude",
+      "fichier": "frame-ecrin-emeraude.png",
+      "rarete": rare
+      "prix":400 
+    },
+    {
+      "id": "emprise-du-neant",
+      "nom": "Emprise du Néant",
+      "fichier": "frame-emprise-du-neant.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "floraison",
+      "nom": "Floraison",
+      "fichier": "frame-floraison.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "surtension",
+      "nom": "Surtension",
+      "fichier": "frame-surtension.png",
+      "rarete": commun
+      "prix": 250
+    },
+    {
+      "id": "or-de-shurima",
+      "nom": "Or de Shurima",
+      "fichier": "frame-or-de-shurima.png",
+      "rarete": rare
+      "prix": 400
+    },
+    {
+      "id": "constellation",
+      "nom": "Constellation",
+      "fichier": "frame-constellation.png",
+      "rarete": épique
+      "prix": 750
+    },
+    {
+      "id": "spectre",
+      "nom": "Spectre",
+      "fichier": "frame-spectre.png",
+      "rarete": mythique
+      "prix": 1500
+    }
+  ],
+  "themes": [
+    {
+      "id": "cyberpunk",
+      "nom": "Cyberpunk",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "vaporwave",
+      "nom": "Vaporwave",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "terminal",
+      "nom": "Terminal",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "enfer",
+      "nom": "Enfer",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "toundra",
+      "nom": "Toundra",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "or-royal",
+      "nom": "Or Royal",
+      "type": "procedural",
+      "fichier": null,
+      "rarete": mythique
+      "prix": 1500
+    },
+    {
+      "id": "valorant",
+      "nom": "Protocole VALORANT",
+      "type": "image",
+      "fichier": "theme-protocole.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    },
+    {
+      "id": "void",
+      "nom": "Le Néant",
+      "type": "image",
+      "fichier": "theme-le-neant.jpg",
+      "rarete": Légendaire
+      "prix": 2750
+    },
+    {
+      "id": "shurima",
+      "nom": "Shurima",
+      "type": "image",
+      "fichier": "theme-shurima.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    },
+    {
+      "id": "ionia",
+      "nom": "Ionia",
+      "type": "image",
+      "fichier": "theme-ionia.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    },
+    {
+      "id": "piltover",
+      "nom": "Piltover",
+      "type": "image",
+      "fichier": "theme-piltover.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    },
+    {
+      "id": "zaun",
+      "nom": "Zaun",
+      "type": "image",
+      "fichier": "theme-zaun.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    },
+    {
+      "id": "pirate",
+      "nom": "Bilgewater",
+      "type": "image",
+      "fichier": "theme-bilgewater.jpg",
+      "rarete": légendaire
+      "prix": 2750
+    }
+  ]
+}

@@ -10,6 +10,7 @@
 
 const express = require('express');
 const { Pool } = require('pg');
+const economy = require('./economy');   // Économie « Guildpoints » + boutique
 
 const app = express();
 app.use(express.json());            // pour lire le JSON envoyé par le front
@@ -91,6 +92,25 @@ function broadcast() {
 }
 // Battement de cœur toutes les 25 s pour que la connexion reste ouverte
 setInterval(() => { for (const c of clients) c.write(': ping\n\n'); }, 25000);
+
+/* ---------- Économie & Boutique ----------
+   Routes /api/economy/* (bourse, shop journalier, achat, équipement, reroll)
+   et helpers de gains (eco.onProposeGame, eco.onRating, eco.onPromo,
+   eco.onDispos, eco.onCampaignSuccess) appelés depuis les routes ci-dessous.
+   Lit catalogue.json à la racine du repo. */
+const eco = economy(pool, broadcast);
+app.use('/api/economy', eco);
+/* Difficulté votée d'une campagne → récompense à la réussite (facile/normale/difficile) */
+function resolveDifficulty(arc) {
+  const v = arc.diffVotes || {};
+  const c = { facile: 0, normale: 0, difficile: 0 };
+  for (const lv of Object.values(v)) if (c[lv] != null) c[lv]++;
+  const max = Math.max(c.facile, c.normale, c.difficile);
+  if (max <= 0) return 'normale';
+  if (c.normale === max) return 'normale';
+  if (c.difficile === max) return 'difficile';
+  return 'facile';
+}
 
 /* ---------- Notifications Discord ----------
    DISCORD_WEBHOOK_URL est une variable d'environnement à configurer dans
@@ -422,6 +442,9 @@ app.post('/api/games', async (req, res) => {
     const genresTxt = game.genres.length ? ' · ' + game.genres.join(', ') : '';
     const linkTxt = game.link ? `\n👉 ${game.link}` : '';
     notifyDiscord(`🎮 **${proposer}** propose **${game.name}** (${priceTxt}${genresTxt})${envy != null ? ` — envie : ${envy}/10` : ''}${linkTxt}`);
+    // Gains : +100 GP par proposeur ; +100 GP si une promo est signalée à la proposition
+    for (const p of game.proposedBy) eco.onProposeGame(p, game.id).catch(() => {});
+    if (game.promo) eco.onPromo(game.promo.by || proposer, game.id).catch(() => {});
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -477,6 +500,7 @@ app.post('/api/games/:id/promo', async (req, res) => {
       const linkTxt = game.link ? `\nAllez jeter un œil 👉 ${game.link}` : '';
       notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a trouvé une bonne affaire ! **${game.name}** ${deal}${until} sur ${game.promo.platform}${linkTxt}`);
       logPromo(game.promo.by);
+      if (game.promo.by) eco.onPromo(game.promo.by, req.params.id).catch(() => {}); // +100 GP
     }
     broadcast();
     res.json({ ok: true });
@@ -496,6 +520,8 @@ app.post('/api/avail', async (req, res) => {
     } else {
       await pool.query(`DELETE FROM avail WHERE member=$1 AND day=$2 AND slot=$3 AND state <> 'locked'`, [member, day, slot]);
     }
+    // Gain : +300 GP la 1re fois qu'on renseigne ses dispos dans la semaine (calendaire)
+    if (on) eco.onDispos(member, mondayISO()).catch(() => {});
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -660,10 +686,19 @@ app.post('/api/ratings', async (req, res) => {
     const hasOwn = owned && typeof owned === 'object' && Object.keys(owned).length;
     if (!isStr(member, 40) || (!hasUpd && !hasOwn)) return res.status(400).json({ error: 'invalid' });
     for (const [gameId, score] of Object.entries(updates || {})) {
+      // Avant d'écrire : est-ce la 1re note de ce membre sur ce jeu ? (seule la 1re compte)
+      const before = (await pool.query(`SELECT data FROM games WHERE id=$1`, [gameId])).rows[0]?.data;
+      const firstRating = before && !(before.ratings && (member in before.ratings));
       await pool.query(
         `UPDATE games SET data = jsonb_set(data, ARRAY['ratings', $2::text], to_jsonb($3::int), true) WHERE id=$1`,
         [gameId, member, clampScore(score)]
       );
+      // Gain : à la 1re note d'un AUTRE membre → +25 GP (note ≥7) ou +75 GP (note 10) au proposeur
+      if (firstRating && before) {
+        const prop = (before.proposedBy || [])[0];
+        if (prop && !(before.proposedBy || []).includes(member))
+          eco.onRating(prop, gameId, member, clampScore(score)).catch(() => {});
+      }
       // Paliers de hype : 3 fans (≥7/10) → "lancez-vous", 4 → "il faut s'y mettre",
       // 5+ → "unanimité". Chaque palier ne notifie qu'une seule fois (hypeLevel).
       const { rows } = await pool.query(`SELECT data FROM games WHERE id=$1`, [gameId]);
@@ -850,6 +885,25 @@ app.post('/api/arcs/:id/leave', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
 });
 
+/* Vote de difficulté d'une campagne (par les NON-participants) : { member, level }
+   level ∈ facile | normale | difficile — fixe la récompense (350 / 700 / 1500 GP). */
+app.post('/api/arcs/:id/difficulty', async (req, res) => {
+  try {
+    const { member, level } = req.body || {};
+    if (!isStr(member, 40) || !['facile', 'normale', 'difficile'].includes(level)) return res.status(400).json({ error: 'invalid' });
+    const arc = await getArc(req.params.id);
+    if (!arc || arc.status !== 'en cours') return res.status(404).json({ error: 'not_found' });
+    if (arc.kind === 'session' || arc.multi === true) return res.json({ ok: false, reason: 'session' });
+    if ((arc.participants || []).includes(member)) return res.json({ ok: false, reason: 'participant' }); // les participants ne votent pas
+    if (arc.goalDone) return res.json({ ok: false, reason: 'done' }); // vote figé une fois réussi
+    arc.diffVotes = arc.diffVotes || {};
+    arc.diffVotes[member] = level;
+    await saveArcData(arc);
+    broadcast();
+    res.json({ ok: true, difficulty: resolveDifficulty(arc) });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
+});
+
 /* Marquer l'objectif d'une aventure comme atteint (ou le rouvrir) : { done } */
 app.post('/api/arcs/:id/goal', async (req, res) => {
   try {
@@ -861,7 +915,12 @@ app.post('/api/arcs/:id/goal', async (req, res) => {
     arc.goalDone = done;
     await pool.query(`UPDATE arcs SET data=$2 WHERE id=$1`, [req.params.id, JSON.stringify(arc)]);
     if (done && !wasDone && arc.goal) {
-      notifyDiscord(`🏆 Objectif ATTEINT pour « ${arc.name} » sur **${arc.gameName}** : « ${arc.goal} » — GG à ${joinFr(arc.participants || [])} !`);
+      const diff = resolveDifficulty(arc);
+      // Récompense : 350 / 700 / 1500 GP à TOUS les participants, une seule fois par campagne
+      const paid = await eco.onCampaignSuccess(arc.id, diff, arc.participants || []);
+      const reward = eco.gains.campaign[diff];
+      const bonus = paid ? ` — **+${reward} GP** pour chaque participant (difficulté : ${diff}) !` : '';
+      notifyDiscord(`🏆 Objectif ATTEINT pour « ${arc.name} » sur **${arc.gameName}** : « ${arc.goal} » — GG à ${joinFr(arc.participants || [])} !${bonus}`);
     }
     broadcast();
     res.json({ ok: true });
