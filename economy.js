@@ -111,6 +111,7 @@ module.exports = function (pool, broadcast) {
   async function saveCredited(c){ await pool.query('INSERT INTO economy_kv (k,v) VALUES ($1,$2) ON CONFLICT (k) DO UPDATE SET v=$2', ['_credited', c]); }
   async function creditMember(me, amount, reason){
     const rec = await getRec(me);
+    console.log(`[GP] +${amount} → ${me} (${reason||'?'}) — nouveau solde : ${(rec.balance||0)+amount}`);
     rec.balance = (rec.balance||0) + amount;
     rec.ledger = [...(rec.ledger||[]), { amount, reason: reason||'', at: Date.now() }].slice(-200);
     await saveRec(me, rec);
@@ -163,6 +164,7 @@ module.exports = function (pool, broadcast) {
       const it = ITEM_BY_KEY.get(key); if (!it) return res.status(400).json({ error:'inconnu' });
       if (rec.balance < it.price) return res.status(400).json({ error:'solde insuffisant' });
       rec.balance -= it.price; rec.purchases = [...(rec.purchases||[]), key];
+      rec.ledger = [...(rec.ledger||[]), { amount: -it.price, reason: 'Achat : '+it.nom, at: Date.now() }].slice(-200);
       await saveRec(me, rec); notify(); res.json(await stateFor(me));
     } catch(e){ console.error('[economy] buy', e); res.status(500).json({ error:'db' }); }
   });
@@ -186,6 +188,7 @@ module.exports = function (pool, broadcast) {
       if (rec.shop.rerolled) return res.status(400).json({ error:'coupon déjà utilisé aujourd\'hui' });
       if (rec.balance < REROLL_COST) return res.status(400).json({ error:'solde insuffisant' });
       rec.balance -= REROLL_COST;
+      rec.ledger = [...(rec.ledger||[]), { amount: -REROLL_COST, reason: 'Coupon de reset', at: Date.now() }].slice(-200);
       rec.shop = { date: todayStr(), slots: genShop(owned), revealed: false, rerolled: true };
       await saveRec(me, rec); notify(); res.json(await stateFor(me));
     } catch(e){ console.error('[economy] reroll', e); res.status(500).json({ error:'db' }); }
@@ -221,6 +224,13 @@ module.exports = function (pool, broadcast) {
       }
       res.json(out);
     } catch(e){ console.error('[economy] all', e); res.status(500).json({ error:'db' }); }
+  });
+
+  // Historique des gains/dépenses d'un membre
+  router.post('/ledger', async (req, res) => {
+    const me = getMe(req); if (!me) return res.status(400).json({ error:'me manquant' });
+    try { const rec = await getRec(me); res.json({ balance: rec.balance, ledger: (rec.ledger||[]).slice().reverse() }); }
+    catch(e){ console.error('[economy] ledger', e); res.status(500).json({ error:'db' }); }
   });
 
   // ---- GAINS (à appeler depuis tes routes existantes) ----

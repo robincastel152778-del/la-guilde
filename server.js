@@ -443,8 +443,8 @@ app.post('/api/games', async (req, res) => {
     const linkTxt = game.link ? `\n👉 ${game.link}` : '';
     notifyDiscord(`🎮 **${proposer}** propose **${game.name}** (${priceTxt}${genresTxt})${envy != null ? ` — envie : ${envy}/10` : ''}${linkTxt}`);
     // Gains : +100 GP par proposeur ; +100 GP si une promo est signalée à la proposition
-    for (const p of game.proposedBy) eco.onProposeGame(p, game.id).catch(() => {});
-    if (game.promo) eco.onPromo(game.promo.by || proposer, game.id).catch(() => {});
+    for (const p of game.proposedBy) eco.onProposeGame(p, game.id).catch(e => console.error('[GP] propose', e));
+    if (game.promo) eco.onPromo(game.promo.by || proposer, game.id).catch(e => console.error('[GP] promo', e));
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -500,7 +500,7 @@ app.post('/api/games/:id/promo', async (req, res) => {
       const linkTxt = game.link ? `\nAllez jeter un œil 👉 ${game.link}` : '';
       notifyDiscord(`🏷️ **${game.promo.by || 'Quelqu\u2019un'}** a trouvé une bonne affaire ! **${game.name}** ${deal}${until} sur ${game.promo.platform}${linkTxt}`);
       logPromo(game.promo.by);
-      if (game.promo.by) eco.onPromo(game.promo.by, req.params.id).catch(() => {}); // +100 GP
+      if (game.promo.by) eco.onPromo(game.promo.by, req.params.id).catch(e => console.error('[GP] promo', e)); // +100 GP
     }
     broadcast();
     res.json({ ok: true });
@@ -521,7 +521,7 @@ app.post('/api/avail', async (req, res) => {
       await pool.query(`DELETE FROM avail WHERE member=$1 AND day=$2 AND slot=$3 AND state <> 'locked'`, [member, day, slot]);
     }
     // Gain : +300 GP la 1re fois qu'on renseigne ses dispos dans la semaine (calendaire)
-    if (on) eco.onDispos(member, mondayISO()).catch(() => {});
+    if (on) eco.onDispos(member, mondayISO()).catch(e => console.error('[GP] dispos', e));
     broadcast();
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'db' }); }
@@ -697,7 +697,7 @@ app.post('/api/ratings', async (req, res) => {
       if (firstRating && before) {
         const prop = (before.proposedBy || [])[0];
         if (prop && !(before.proposedBy || []).includes(member))
-          eco.onRating(prop, gameId, member, clampScore(score)).catch(() => {});
+          eco.onRating(prop, gameId, member, clampScore(score)).catch(e => console.error('[GP] rating', e));
       }
       // Paliers de hype : 3 fans (≥7/10) → "lancez-vous", 4 → "il faut s'y mettre",
       // 5+ → "unanimité". Chaque palier ne notifie qu'une seule fois (hypeLevel).
