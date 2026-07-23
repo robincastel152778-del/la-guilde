@@ -130,7 +130,7 @@ module.exports = function (pool, broadcast) {
     const empty = !rec.shop || !Array.isArray(rec.shop.slots) ||
                   rec.shop.slots.filter(k => ITEM_BY_KEY.has(k)).length === 0;
     if (!rec.shop || rec.shop.date !== todayStr() || empty){
-      rec.shop = { date: todayStr(), slots: genShop(owned), rerolled: (rec.shop && rec.shop.date === todayStr()) ? !!rec.shop.rerolled : false };
+      rec.shop = { date: todayStr(), slots: genShop(owned), revealed: false, rerolled: (rec.shop && rec.shop.date === todayStr()) ? !!rec.shop.rerolled : false };
       await saveRec(me, rec);
     }
     const slots = rec.shop.slots.map(k => ITEM_BY_KEY.get(k)).filter(Boolean).map(it => ({
@@ -138,7 +138,8 @@ module.exports = function (pool, broadcast) {
       price: it.price, fichier: it.fichier, owned: owned.has(it.key),
     }));
     return { me, balance: rec.balance, purchases: rec.purchases||[], equipped: rec.equipped||{},
-             shop: { date: rec.shop.date, rerolled: !!rec.shop.rerolled, cost: REROLL_COST, slots } };
+             shop: { date: rec.shop.date, rerolled: !!rec.shop.rerolled, revealed: !!rec.shop.revealed,
+                     cost: REROLL_COST, slots } };
   }
   function getMe(req){ const me = (req.body && req.body.me) || req.query.me; return (typeof me==='string' && me.trim()) ? me.trim() : null; }
 
@@ -185,9 +186,41 @@ module.exports = function (pool, broadcast) {
       if (rec.shop.rerolled) return res.status(400).json({ error:'coupon déjà utilisé aujourd\'hui' });
       if (rec.balance < REROLL_COST) return res.status(400).json({ error:'solde insuffisant' });
       rec.balance -= REROLL_COST;
-      rec.shop = { date: todayStr(), slots: genShop(owned), rerolled: true };
+      rec.shop = { date: todayStr(), slots: genShop(owned), revealed: false, rerolled: true };
       await saveRec(me, rec); notify(); res.json(await stateFor(me));
     } catch(e){ console.error('[economy] reroll', e); res.status(500).json({ error:'db' }); }
+  });
+
+  // Révèle définitivement (pour la journée) le slot « épique ou plus »
+  router.post('/reveal', async (req, res) => {
+    const me = getMe(req); if (!me) return res.status(400).json({ error:'me manquant' });
+    try {
+      const rec = await getRec(me);
+      if (rec.shop && rec.shop.date === todayStr() && !rec.shop.revealed){
+        rec.shop.revealed = true; await saveRec(me, rec);
+      }
+      res.json(await stateFor(me));
+    } catch(e){ console.error('[economy] reveal', e); res.status(500).json({ error:'db' }); }
+  });
+
+  // Cosmétiques équipés de TOUS les membres (pour l'affichage sur les profils)
+  router.get('/all', async (req, res) => {
+    try {
+      await ensure();
+      const { rows } = await pool.query("SELECT k, v FROM economy_kv WHERE k LIKE 'm:%'");
+      const out = {};
+      for (const r of rows){
+        const name = r.k.slice(2);
+        const eq = (r.v && r.v.equipped) || {};
+        const detail = {};
+        for (const cat of Object.keys(eq)){
+          const it = ITEM_BY_KEY.get(cat + ':' + eq[cat]);
+          if (it) detail[cat] = { id: it.id, nom: it.nom, fichier: it.fichier, rarity: it.rarity };
+        }
+        out[name] = detail;
+      }
+      res.json(out);
+    } catch(e){ console.error('[economy] all', e); res.status(500).json({ error:'db' }); }
   });
 
   // ---- GAINS (à appeler depuis tes routes existantes) ----
