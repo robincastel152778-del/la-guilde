@@ -25,7 +25,7 @@
   const CATLABEL = { couleurs:'Couleurs de pseudo', statuts:'Statuts', bannieres:'Bannières', bordures:'Bordures', themes:'Thèmes' };
   const CATORDER = ['couleurs','statuts','bannieres','bordures','themes'];
   const FRAC = 0.4867;
-  let CATALOGUE = null, STATE = null, PROF = null;
+  let CATALOGUE = null, STATE = null, PROF = null, LEDGER = null, LAST_BAL = null;
 
   const CATLBL = { couleurs:'Couleur de pseudo', statuts:'Statut', bannieres:'Bannière', bordures:'Bordure', themes:'Thème' };
   const CATICO = { couleurs:'🎨', statuts:'💬', bannieres:'🖼️', bordures:'⭕', themes:'🌐' };
@@ -185,7 +185,7 @@
       ${emptyMsg}
       <div class="ge-grid">${cards}</div>
       <div class="ge-foot">Le shop se réinitialise chaque jour. Les objets déjà possédés n'y réapparaissent pas.
-        <span style="opacity:.5"> · boutique.js v2</span></div>`;
+        <span style="opacity:.5"> · boutique.js v3</span></div>`;
   }
 
   function renderOwned(){
@@ -208,12 +208,30 @@
     return html;
   }
 
+  function renderLog(){
+    const l = (LEDGER && LEDGER.ledger) || [];
+    if (!l.length) return `<div class="ge-empty"><b>Aucun mouvement pour l'instant.</b><br><br>
+      Les Guildpoints arrivent quand tu proposes un jeu (+100), quand on note ton jeu ≥7 (+25) ou 10 (+75),
+      quand tu signales une promo (+100), quand tu remplis tes dispos de la semaine (+300),
+      et quand une campagne est réussie (350 / 700 / 1500).</div>`;
+    return `<div class="ge-log">${l.map(e => {
+      const pos = e.amount > 0;
+      const d = new Date(e.at);
+      const date = d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'}) + ' ' +
+                   d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      return `<div class="ge-logrow">
+        <span class="ge-logamt" style="color:${pos?'#4ADE80':'#FF6B81'}">${pos?'+':''}${e.amount} GP</span>
+        <span class="ge-logreason">${e.reason||''}</span>
+        <span class="ge-logdate">${date}</span></div>`;
+    }).join('')}</div>`;
+  }
+
   function paint(){
     const body = document.getElementById('ge-body');
     if (!body) return;
-    body.innerHTML = (STATE.tab === 'owned') ? renderOwned() : renderShop();
-    document.querySelectorAll('#ge-tab-shop,#ge-tab-owned').forEach(b=>b.classList.remove('on'));
-    document.getElementById(STATE.tab==='owned'?'ge-tab-owned':'ge-tab-shop').classList.add('on');
+    body.innerHTML = STATE.tab === 'owned' ? renderOwned() : STATE.tab === 'log' ? renderLog() : renderShop();
+    document.querySelectorAll('#ge-tab-shop,#ge-tab-owned,#ge-tab-log').forEach(b=>b.classList.remove('on'));
+    document.getElementById(STATE.tab==='owned'?'ge-tab-owned':STATE.tab==='log'?'ge-tab-log':'ge-tab-shop').classList.add('on');
     const w = document.getElementById('ge-panel-gp'); if (w) w.textContent = STATE.balance;
     updateWallet();
   }
@@ -312,6 +330,7 @@
             <div class="ge-tabs">
               <button id="ge-tab-shop" class="on">Shop du jour</button>
               <button id="ge-tab-owned">Possédés</button>
+              <button id="ge-tab-log">Historique</button>
             </div>
             <button class="ge-close" id="ge-close">✕</button>
           </div>
@@ -322,6 +341,9 @@
       document.getElementById('ge-close').onclick = closeShop;
       document.getElementById('ge-tab-shop').onclick = () => { STATE.tab='shop'; paint(); };
       document.getElementById('ge-tab-owned').onclick = () => { STATE.tab='owned'; paint(); };
+      document.getElementById('ge-tab-log').onclick = async () => {
+        STATE.tab='log'; LEDGER = await api('/ledger'); paint();
+      };
       const bodyEl = document.getElementById('ge-body');
       bodyEl.addEventListener('mouseover', e => {
         const c = e.target.closest('.ge-card[data-theme]');
@@ -347,16 +369,51 @@
   function closeShop(){ const ov=document.getElementById('ge-overlay'); if (ov) ov.style.display='none'; }
 
   // ---------- bourse (haut droite) ----------
-  async function updateWallet(){
+  function showBalance(v){
     const el = document.getElementById('ge-wallet-gp'); if (!el) return;
-    if (STATE) { el.textContent = STATE.balance; return; }
-    try { const s = await api('/state'); el.textContent = s.balance; } catch(e){}
+    if (LAST_BAL !== null && v > LAST_BAL){
+      const gain = v - LAST_BAL;
+      toast('+' + gain + ' GP !');
+      const w = document.getElementById('ge-wallet');
+      if (w){ w.classList.remove('ge-gain'); void w.offsetWidth; w.classList.add('ge-gain'); }
+    }
+    LAST_BAL = v; el.textContent = v;
+  }
+  async function updateWallet(){
+    if (!document.getElementById('ge-wallet-gp')) return;
+    if (STATE) { showBalance(STATE.balance); return; }
+    try { const s = await api('/state'); showBalance(s.balance); } catch(e){}
+  }
+  // La bourse se met à jour dès qu'un changement est diffusé par le serveur (SSE)
+  function listenLive(){
+    try {
+      const es = new EventSource('/api/events');
+      es.onmessage = () => { STATE = null; updateWallet(); };
+    } catch(e){}
   }
   function mountWallet(){
     if (document.getElementById('ge-wallet')) return;
     const w = document.createElement('button');
-    w.id = 'ge-wallet'; w.title = 'Ta bourse — ouvrir la boutique';
-    w.innerHTML = `◆ <b id="ge-wallet-gp">…</b> <span>GP</span>`;
+    w.id = 'ge-wallet';
+    w.innerHTML = `◆ <b id="ge-wallet-gp">…</b> <span>GP</span>
+      <span class="ge-wtip">
+        <b>Gagner des Guildpoints</b>
+        <i>Tout est automatique, rien à réclamer.</i>
+        <em>Les jeux</em>
+        <u><span>Proposer un jeu</span><span>+100</span></u>
+        <u><span>Un autre membre note ton jeu ≥ 7</span><span>+25</span></u>
+        <u><span>Un autre membre met 10 à ton jeu</span><span>+75</span></u>
+        <u><span>Signaler une promo</span><span>+100</span></u>
+        <em>La semaine</em>
+        <u><span>Remplir ses dispos (1re fois de la semaine)</span><span>+300</span></u>
+        <em>Les campagnes — à la réussite de l'objectif, pour chaque participant</em>
+        <u><span>Difficulté facile</span><span>+350</span></u>
+        <u><span>Difficulté normale</span><span>+700</span></u>
+        <u><span>Difficulté difficile</span><span>+1500</span></u>
+        <i>La difficulté est votée par les membres qui ne participent pas.
+           Seule la 1re note de chaque membre compte, et chaque gain n'est versé qu'une fois.
+           Clique la bourse pour voir ton historique.</i>
+      </span>`;
     w.onclick = openShop;
     document.body.appendChild(w);
     updateWallet();
@@ -384,7 +441,7 @@
   function ensureStyle(){
     if (document.getElementById('ge-style')) return;
     const css = `
-    #ge-wallet{position:fixed;top:14px;right:16px;z-index:9000;background:#171A24;color:#FFC857;
+    #ge-wallet{position:fixed;top:14px;right:16px;overflow:visible;z-index:9000;background:#171A24;color:#FFC857;
       border:1px solid #FFC85755;border-radius:999px;padding:7px 15px;font:700 14px 'Outfit',sans-serif;
       cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;gap:6px;align-items:center;}
     #ge-wallet span{color:#8A90A6;font-weight:600;} #ge-wallet b{color:#FFC857;}
@@ -459,6 +516,25 @@
     .ge-tm-card{margin:6px 10px;border:1px solid;border-radius:9px;padding:9px;backdrop-filter:blur(3px);}
     .ge-tm-row{display:flex;justify-content:space-between;font-size:10px;font-weight:600;padding:4px 0;border-bottom:1px solid;}
     .ge-tm-foot{padding:2px 10px 8px;font-size:9px;font-style:italic;}
+    .ge-log{display:flex;flex-direction:column;gap:6px;}
+    .ge-logrow{display:flex;align-items:center;gap:12px;background:#171A24;border:1px solid #262B3B;border-radius:10px;padding:10px 14px;}
+    .ge-logamt{font-weight:800;font-size:14px;min-width:82px;}
+    .ge-logreason{flex:1;font-size:13px;color:#C9CEDE;}
+    .ge-logdate{font-size:11px;color:#8A90A6;font-family:'Silkscreen',monospace;}
+    #ge-wallet .ge-wtip{display:none;position:absolute;top:42px;right:0;width:352px;background:#0F1118;
+      border:1px solid #FFC85766;border-radius:14px;padding:16px 18px;z-index:60;text-align:left;
+      box-shadow:0 16px 40px rgba(0,0,0,.7);font:400 12.5px/1.55 'Outfit',sans-serif;color:#C9CEDE;cursor:default;}
+    #ge-wallet:hover .ge-wtip{display:block;}
+    #ge-wallet .ge-wtip>b{display:block;color:#FFC857;font-family:'Silkscreen',monospace;font-size:12px;margin-bottom:6px;}
+    #ge-wallet .ge-wtip>i{display:block;font-style:italic;color:#8A90A6;font-size:11.5px;margin-bottom:10px;}
+    #ge-wallet .ge-wtip>em{display:block;font-style:normal;font-family:'Silkscreen',monospace;font-size:9px;
+      letter-spacing:.5px;color:#8B7CFF;text-transform:uppercase;margin:11px 0 5px;}
+    #ge-wallet .ge-wtip>u{display:flex;justify-content:space-between;gap:12px;text-decoration:none;
+      padding:3px 0;border-bottom:1px dashed #262B3B;}
+    #ge-wallet .ge-wtip>u:last-of-type{border-bottom:none;}
+    #ge-wallet .ge-wtip>u span:last-child{color:#4ADE80;font-weight:800;white-space:nowrap;}
+    #ge-wallet.ge-gain{animation:ge-gain .9s ease;}
+    @keyframes ge-gain{0%{transform:scale(1)}30%{transform:scale(1.18);box-shadow:0 0 0 6px rgba(255,200,87,.25)}100%{transform:scale(1)}}
     .ge-empty{background:#1D2130;border:1px solid #FF6B8155;border-radius:12px;padding:18px;color:#C9CEDE;font-size:13.5px;line-height:1.6;}
     .ge-empty code{background:#0F1118;border:1px solid #262B3B;border-radius:5px;padding:1px 6px;color:#FFC857;}
     #ge-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);z-index:9999;
@@ -502,7 +578,7 @@
   }
 
   // ---------- boot ----------
-  function boot(){ console.log('[La Guilde] boutique.js v2 chargé'); ensureStyle(); mountWallet(); }
+  function boot(){ console.log('[La Guilde] boutique.js v3 chargé'); ensureStyle(); mountWallet(); listenLive(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 
